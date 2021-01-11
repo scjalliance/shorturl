@@ -5,7 +5,7 @@ admin.initializeApp();
 const db = admin.firestore();
 
 exports.redir = functions.https.onRequest((request, response) => {
-    let slug = request.url.split("/", 2)[1].toLocaleLowerCase();
+    let slug = request.url.split("/", 2)[1].split("?", 2)[0].toLocaleLowerCase();
     let hostname = request.hostname;
     return db.collection(hostname).doc(slug).get().then(documentSnapshot => {
         if (documentSnapshot.exists) {
