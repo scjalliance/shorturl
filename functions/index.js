@@ -24,7 +24,7 @@ exports.redir = functions.https.onRequest((request, response) => {
             if (data.passQueryString && query !== "") {
                 destination = destination + (RegExp("\\?").test(destination) ? "&" : "?") + query;
             }
-            response.redirect(destination);
+            response.redirect(data.statusCode ? data.statusCode : 307, destination);
         } else {
             if (slug === "404") {
                 response.redirect("/404.html"); // the 404 slug doesn't exist, so fail us to a static 404 page
