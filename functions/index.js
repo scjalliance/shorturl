@@ -17,7 +17,13 @@ exports.redir = functions.https.onRequest((request, response) => {
         if (data.passQueryString && query !== "") {
             destination = destination + (RegExp("\\?").test(destination) ? "&" : "?") + query;
         }
-        response.redirect(data.statusCode ? data.statusCode : 307, destination);
+        if (data.frame) {
+            response
+            .contentType("html")
+            .send(`<html><head><title>${data.frame}</title></head><body style="padding:0;margin:0;width:100%;height:100%"><iframe style="border:0;width:100%;height:100%" title="${data.frame}" src="${destination}"/></body></html>`);
+        } else {
+            response.redirect(data.statusCode ? data.statusCode : 307, destination);
+        }
     };
 
     return db.collection(request.hostname).doc(slug).get().then(documentSnapshot => {
@@ -29,6 +35,7 @@ exports.redir = functions.https.onRequest((request, response) => {
             });
             if (data.usePaths) {
                 let requestUrl = request.url.replace(/^\/[^/]+\//, "");
+                // eslint-disable-next-line promise/no-nesting
                 return documentSnapshot.ref.collection("paths").get().then(querySnapshot => {
                     let destination = "";
                     querySnapshot.forEach(destSnapshot => {
