@@ -3,7 +3,7 @@ const admin = require('firebase-admin');
 const fetch = require('node-fetch');
 admin.initializeApp();
 
-const VERSION = 202103010357;
+const VERSION = 202103010457;
 const db = admin.firestore();
 
 exports.redir = functions.https.onRequest((request, response) => {
@@ -65,6 +65,13 @@ exports.redir = functions.https.onRequest((request, response) => {
                 reuseOrCreateHeader("Authorization");
                 reuseOrCreateHeader("User-Agent");
                 reuseOrCreateHeader("X-Forwarded-For", request.ip);
+                reuseOrCreateHeader("X-Goog-Channel-ID");
+                reuseOrCreateHeader("X-Goog-Channel-Token");
+                reuseOrCreateHeader("X-Goog-Channel-Expiration");
+                reuseOrCreateHeader("X-Goog-Resource-ID");
+                reuseOrCreateHeader("X-Goog-Resource-URI");
+                reuseOrCreateHeader("X-Goog-Resource-State");
+                reuseOrCreateHeader("X-Goog-Message-Number");
                 createHeader("X-Passthrough-Domain", request.hostname);
                 createHeader("X-Passthrough-Slug", slug);
                 createHeader("X-ShortUrl-Ver", VERSION);
