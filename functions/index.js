@@ -4,21 +4,16 @@ const fetch = require('node-fetch');
 const QRCode = require('qrcode');
 admin.initializeApp();
 
-const VERSION = 202105051318;
+const VERSION = 202105051340;
 const db = admin.firestore();
 
 exports.redir = functions.https.onRequest((request, response) => {
     let hostname = request.hostname.replace(/^qr\./, "");
+    const ifCreateQRRequest = hostname !== request.hostname;
+
     let url = request.url.replace(/^\/+qr\/+/, "/");
+    const isRequestViaQrCode = url !== request.url;
 
-    if (hostname !== request.hostname) {
-        return QRCode.toFileStream(
-            response,
-            `https://${hostname}/qr${url}`,
-        );
-    }
-
-    let isQR = url !== request.url;
     let slug = url.replace(/^\//, "").split(/(\/|\?)/, 2)[0].toLocaleLowerCase();
     let query = "";
     {
@@ -44,7 +39,18 @@ exports.redir = functions.https.onRequest((request, response) => {
     .then(documentSnapshot => {
         if (documentSnapshot.exists) {
             let data = documentSnapshot.data();
-            if (isQR) {
+
+            if (ifCreateQRRequest) {
+                return documentSnapshot.ref.update({
+                    qrCreationCount: admin.firestore.FieldValue.increment(1),
+                    qrCreationLast: admin.firestore.FieldValue.serverTimestamp()
+                }).then(() => QRCode.toFileStream(
+                    response,
+                    `https://${hostname}/qr${url}`
+                ));
+            }
+            
+            if (isRequestViaQrCode) {
                 documentSnapshot.ref.update({
                     qrCount: admin.firestore.FieldValue.increment(1),
                     qrLast: admin.firestore.FieldValue.serverTimestamp(),
