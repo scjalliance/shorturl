@@ -1,16 +1,28 @@
 const functions = require('firebase-functions');
 const admin = require('firebase-admin');
 const fetch = require('node-fetch');
+const QRCode = require('qrcode');
 admin.initializeApp();
 
-const VERSION = 202103011738;
+const VERSION = 202105051318;
 const db = admin.firestore();
 
 exports.redir = functions.https.onRequest((request, response) => {
-    let slug = request.url.replace(/^\//, "").split(/(\/|\?)/, 2)[0].toLocaleLowerCase();
+    let hostname = request.hostname.replace(/^qr\./, "");
+    let url = request.url.replace(/^\/+qr\/+/, "/");
+
+    if (hostname !== request.hostname) {
+        return QRCode.toFileStream(
+            response,
+            `https://${hostname}/qr${url}`,
+        );
+    }
+
+    let isQR = url !== request.url;
+    let slug = url.replace(/^\//, "").split(/(\/|\?)/, 2)[0].toLocaleLowerCase();
     let query = "";
     {
-        let q = request.url.split("?");
+        let q = url.split("?");
         q.shift();
         query = q.join("?");
     }
@@ -22,20 +34,29 @@ exports.redir = functions.https.onRequest((request, response) => {
         if (data.frame) {
             response
             .contentType("html")
-            .send(`<html><head><title>${data.frame}</title></head><body style="padding:0;margin:0;width:100%;height:100%"><iframe style="border:0;width:100%;height:100%" title="${data.frame}" src="${destination}"/></body></html>`);
+            .send(`<html><head><title>${data.frame}</title><script>window.history.replaceState(null,"","https://${hostname}${url}")</script></head><body style="padding:0;margin:0;width:100%;height:100%"><iframe style="border:0;width:100%;height:100%" title="${data.frame}" src="${destination}"/></body></html>`);
         } else {
             response.redirect(data.statusCode ? data.statusCode : 307, destination);
         }
     };
 
-    return db.collection(request.hostname).doc(slug).get()
+    return db.collection(hostname).doc(slug).get()
     .then(documentSnapshot => {
         if (documentSnapshot.exists) {
             let data = documentSnapshot.data();
-            documentSnapshot.ref.update({
-                clickCount: admin.firestore.FieldValue.increment(1),
-                clickLast: admin.firestore.FieldValue.serverTimestamp()
-            });
+            if (isQR) {
+                documentSnapshot.ref.update({
+                    qrCount: admin.firestore.FieldValue.increment(1),
+                    qrLast: admin.firestore.FieldValue.serverTimestamp(),
+                    clickCount: admin.firestore.FieldValue.increment(1),
+                    clickLast: admin.firestore.FieldValue.serverTimestamp()
+                });
+            } else {
+                documentSnapshot.ref.update({
+                    clickCount: admin.firestore.FieldValue.increment(1),
+                    clickLast: admin.firestore.FieldValue.serverTimestamp()
+                });
+            }
 
             if (data.passthrough) { // simple single-path proxy
                 let destination = data.destination;
@@ -73,7 +94,7 @@ exports.redir = functions.https.onRequest((request, response) => {
                 reuseOrCreateHeader("X-Goog-Resource-URI");
                 reuseOrCreateHeader("X-Goog-Resource-State");
                 reuseOrCreateHeader("X-Goog-Message-Number");
-                createHeader("X-Passthrough-Domain", request.hostname);
+                createHeader("X-Passthrough-Domain", hostname);
                 createHeader("X-Passthrough-Slug", slug);
                 createHeader("X-ShortUrl-Ver", VERSION);
 
@@ -110,7 +131,7 @@ exports.redir = functions.https.onRequest((request, response) => {
                 });
 
             } else if (data.usePaths) { // fancy regex-based path redirection
-                let requestUrl = request.url.replace(/^\/[^/]+\//, "");
+                let requestUrl = url.replace(/^\/[^/]+\//, "");
                 // eslint-disable-next-line promise/no-nesting
                 return documentSnapshot.ref.collection("paths").get()
                 .then(querySnapshot => {
@@ -142,7 +163,7 @@ exports.redir = functions.https.onRequest((request, response) => {
             if (slug === "404") { // we tried to find a 404 redirect, but even it didn't exist
                 response.redirect("/404.html"); // ...so fail us to a static 404 page
             } else {
-                response.redirect("/404" + request.url); // use the 404 slug to send us somewhere, maybe?
+                response.redirect("/404" + url); // use the 404 slug to send us somewhere, maybe?
             }
         }
 
