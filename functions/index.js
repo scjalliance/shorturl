@@ -1,8 +1,10 @@
 const functions = require('firebase-functions');
 const admin = require('firebase-admin');
-const fetch = require('node-fetch');
+const { FieldValue } = require('firebase-admin/firestore');
 const QRCode = require('qrcode');
 admin.initializeApp();
+
+const escapeHtml = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
 const VERSION = 202105051348;
 const db = admin.firestore();
@@ -29,7 +31,7 @@ exports.redir = functions.https.onRequest((request, response) => {
         if (data.frame) {
             response
             .contentType("html")
-            .send(`<html><head><title>${data.frame}</title><script>window.history.replaceState(null,"","https://${hostname}${url}")</script></head><body style="padding:0;margin:0;width:100%;height:100%"><iframe style="border:0;width:100%;height:100%" title="${data.frame}" src="${destination}"/></body></html>`);
+            .send(`<html><head><title>${escapeHtml(data.frame)}</title><script>window.history.replaceState(null,"","https://${escapeHtml(hostname)}${escapeHtml(url)}")</script></head><body style="padding:0;margin:0;width:100%;height:100%"><iframe style="border:0;width:100%;height:100%" title="${escapeHtml(data.frame)}" src="${encodeURI(destination)}"/></body></html>`);
         } else {
             response.redirect(data.statusCode ? data.statusCode : 307, destination);
         }
@@ -42,8 +44,8 @@ exports.redir = functions.https.onRequest((request, response) => {
 
             if (ifCreateQRRequest && slug !== "404") {
                 return documentSnapshot.ref.update({
-                    qrCreateCount: admin.firestore.FieldValue.increment(1),
-                    qrCreateLast: admin.firestore.FieldValue.serverTimestamp()
+                    qrCreateCount: FieldValue.increment(1),
+                    qrCreateLast: FieldValue.serverTimestamp()
                 }).then(() => QRCode.toFileStream(
                     response,
                     `https://${hostname}/qr${url}`
@@ -52,15 +54,15 @@ exports.redir = functions.https.onRequest((request, response) => {
             
             if (isRequestViaQrCode) {
                 documentSnapshot.ref.update({
-                    qrUseCount: admin.firestore.FieldValue.increment(1),
-                    qrUseLast: admin.firestore.FieldValue.serverTimestamp(),
-                    clickCount: admin.firestore.FieldValue.increment(1),
-                    clickLast: admin.firestore.FieldValue.serverTimestamp()
+                    qrUseCount: FieldValue.increment(1),
+                    qrUseLast: FieldValue.serverTimestamp(),
+                    clickCount: FieldValue.increment(1),
+                    clickLast: FieldValue.serverTimestamp()
                 });
             } else {
                 documentSnapshot.ref.update({
-                    clickCount: admin.firestore.FieldValue.increment(1),
-                    clickLast: admin.firestore.FieldValue.serverTimestamp()
+                    clickCount: FieldValue.increment(1),
+                    clickLast: FieldValue.serverTimestamp()
                 });
             }
 
@@ -107,10 +109,10 @@ exports.redir = functions.https.onRequest((request, response) => {
                 functions.logger.log("[VERSION]", VERSION);
 
                 // eslint-disable-next-line promise/no-nesting
-                fetch(destination, {
+                return fetch(destination, {
                     headers: headers,
                     method: request.method,
-                    body: request.rawBody
+                    body: ["GET", "HEAD"].includes(request.method) ? undefined : request.rawBody
                 })
                 .then(res => {
                     response.set("x-shorturl-ver", VERSION);
@@ -118,22 +120,25 @@ exports.redir = functions.https.onRequest((request, response) => {
                     throw new Error(res.statusText);
                 })
                 .then(res => {
-                    for (const [key] of Object.entries(res.headers.raw())) {
+                    for (const [key, value] of res.headers.entries()) {
                         if([
                             "access-control-allow-origin",
                             "cache-control",
                             "content-type",
                             "pragma"
-                        ].includes(key.toLowerCase())) response.set(key, res.headers.get(key));
+                        ].includes(key.toLowerCase())) response.set(key, value);
                     }
                     response.status(res.status);
-                    response.send(res.buffer());
+                    return res.arrayBuffer();
+                })
+                .then(arrayBuffer => {
+                    response.send(Buffer.from(arrayBuffer));
                     response.end();
-                    return res;
+                    return undefined;
                 })
                 .catch(err => {
                     functions.logger.log("passthrough error: ", err);
-                    response.status(500).send(err);
+                    response.status(500).send("Internal Server Error");
                 });
 
             } else if (data.usePaths) { // fancy regex-based path redirection
@@ -148,8 +153,8 @@ exports.redir = functions.https.onRequest((request, response) => {
                         let match = RegExp(destData.pattern).exec(requestUrl);
                         if (match && match.groups !== undefined) {
                             destSnapshot.ref.update({
-                                matchCount: admin.firestore.FieldValue.increment(1),
-                                matchLast: admin.firestore.FieldValue.serverTimestamp()
+                                matchCount: FieldValue.increment(1),
+                                matchLast: FieldValue.serverTimestamp()
                             });
                             destination = destData.destination;
                             for (let key in match.groups) {
