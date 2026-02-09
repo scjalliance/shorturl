@@ -31,7 +31,7 @@ exports.redir = functions.https.onRequest((request, response) => {
         if (data.frame) {
             response
             .contentType("html")
-            .send(`<html><head><title>${escapeHtml(data.frame)}</title><script>window.history.replaceState(null,"","https://${escapeHtml(hostname)}${escapeHtml(url)}")</script></head><body style="padding:0;margin:0;width:100%;height:100%"><iframe style="border:0;width:100%;height:100%" title="${escapeHtml(data.frame)}" src="${encodeURI(destination)}"/></body></html>`);
+            .send(`<html><head><title>${escapeHtml(data.frame)}</title><script>window.history.replaceState(null,"",${JSON.stringify(`https://${hostname}${url}`)})</script></head><body style="padding:0;margin:0;width:100%;height:100%"><iframe style="border:0;width:100%;height:100%" title="${escapeHtml(data.frame)}" src="${escapeHtml(encodeURI(destination))}"/></body></html>`);
         } else {
             response.redirect(data.statusCode ? data.statusCode : 307, destination);
         }
@@ -133,7 +133,6 @@ exports.redir = functions.https.onRequest((request, response) => {
                 })
                 .then(arrayBuffer => {
                     response.send(Buffer.from(arrayBuffer));
-                    response.end();
                     return undefined;
                 })
                 .catch(err => {
