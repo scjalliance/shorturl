@@ -33,7 +33,7 @@ jobs:
         id: deploy
         run: |
           RESULT=$(npx firebase-tools hosting:channel:deploy "pr-${{ github.event.pull_request.number }}" \
-            --target prod \
+            --only prod \
             --expires 7d \
             --project scj-short-url \
             --json)

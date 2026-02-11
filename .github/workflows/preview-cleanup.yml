@@ -22,6 +22,6 @@ jobs:
       - name: Delete preview channel
         run: |
           npx firebase-tools hosting:channel:delete "pr-${{ github.event.pull_request.number }}" \
-            --target prod \
+            --site scj-short-url \
             --project scj-short-url \
             --force
