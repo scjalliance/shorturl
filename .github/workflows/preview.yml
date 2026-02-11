@@ -39,9 +39,14 @@ jobs:
             --only prod \
             --expires 7d \
             --no-authorized-domains \
-            --project scj-short-url 2>&1) || { echo "$OUTPUT"; exit 1; }
+            --project scj-short-url \
+            --json 2>&1) || { echo "$OUTPUT"; exit 1; }
           echo "$OUTPUT"
-          URL=$(echo "$OUTPUT" | grep 'Channel URL' | grep -oP 'https://[^\s\[\]]+')
+          URL=$(echo "$OUTPUT" | jq -r '.result["prod"].url')
+          if [ -z "$URL" ] || [ "$URL" = "null" ]; then
+            echo "::error::Failed to parse preview URL from Firebase output"
+            exit 1
+          fi
           echo "url=$URL" >> "$GITHUB_OUTPUT"
 
       - name: Comment preview URL on PR
