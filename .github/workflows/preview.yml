@@ -32,12 +32,12 @@ jobs:
       - name: Deploy to preview channel
         id: deploy
         run: |
-          RESULT=$(npx firebase-tools hosting:channel:deploy "pr-${{ github.event.pull_request.number }}" \
+          OUTPUT=$(npx firebase-tools hosting:channel:deploy "pr-${{ github.event.pull_request.number }}" \
             --only prod \
             --expires 7d \
-            --project scj-short-url \
-            --json)
-          URL=$(echo "$RESULT" | jq -r '.result["prod"].url')
+            --project scj-short-url 2>&1) || { echo "$OUTPUT"; exit 1; }
+          echo "$OUTPUT"
+          URL=$(echo "$OUTPUT" | grep -oP 'https://[^\s]+')
           echo "url=$URL" >> "$GITHUB_OUTPUT"
 
       - name: Comment preview URL on PR
