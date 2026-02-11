@@ -29,15 +29,19 @@ jobs:
         with:
           credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
 
+      - name: Set preview hostname override
+        run: echo "SHORTURL_HOSTNAME=scj.io" >> functions/.env
+
       - name: Deploy to preview channel
         id: deploy
         run: |
           OUTPUT=$(npx firebase-tools hosting:channel:deploy "pr-${{ github.event.pull_request.number }}" \
             --only prod \
             --expires 7d \
+            --no-authorized-domains \
             --project scj-short-url 2>&1) || { echo "$OUTPUT"; exit 1; }
           echo "$OUTPUT"
-          URL=$(echo "$OUTPUT" | grep -oP 'https://[^\s]+')
+          URL=$(echo "$OUTPUT" | grep 'Channel URL' | grep -oP 'https://[^\s\[\]]+')
           echo "url=$URL" >> "$GITHUB_OUTPUT"
 
       - name: Comment preview URL on PR
