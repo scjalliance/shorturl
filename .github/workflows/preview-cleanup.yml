@@ -1,0 +1,27 @@
+name: Preview Cleanup
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+
+      - name: Delete preview channel
+        run: |
+          npx firebase-tools hosting:channel:delete "pr-${{ github.event.pull_request.number }}" \
+            --target prod \
+            --project scj-short-url \
+            --force

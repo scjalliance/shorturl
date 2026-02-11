@@ -28,7 +28,10 @@
     "rewrites": [
       {
         "source": "**",
-        "function": "redirV2"
+        "function": {
+          "functionId": "redirV2",
+          "pinTag": true
+        }
       }
     ]
   },
