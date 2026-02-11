@@ -42,7 +42,7 @@ jobs:
             --project scj-short-url \
             --json 2>&1) || { echo "$OUTPUT"; exit 1; }
           echo "$OUTPUT"
-          URL=$(echo "$OUTPUT" | jq -r '.result["prod"].url')
+          URL=$(echo "$OUTPUT" | grep -EA9999 '^{$' | jq -r '.result.prod.url')
           if [ -z "$URL" ] || [ "$URL" = "null" ]; then
             echo "::error::Failed to parse preview URL from Firebase output"
             exit 1
