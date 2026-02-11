@@ -1,5 +1,14 @@
 {
   "projects": {
     "default": "scj-short-url"
+  },
+  "targets": {
+    "scj-short-url": {
+      "hosting": {
+        "prod": [
+          "scj-short-url"
+        ]
+      }
+    }
   }
 }
