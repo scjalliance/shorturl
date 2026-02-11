@@ -5,11 +5,13 @@
   },
   "functions": {
     "predeploy": [
+      "npm --prefix \"$RESOURCE_DIR\" run version:generate",
       "npm --prefix \"$RESOURCE_DIR\" run lint"
     ],
     "source": "functions"
   },
   "hosting": {
+    "target": "prod",
     "public": "public",
     "ignore": [
       "firebase.json",
@@ -26,7 +28,7 @@
     "rewrites": [
       {
         "source": "**",
-        "function": "redir"
+        "function": "redirV2"
       }
     ]
   },

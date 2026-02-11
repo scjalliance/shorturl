@@ -2,6 +2,7 @@
   "name": "functions",
   "description": "Cloud Functions for Firebase",
   "scripts": {
+    "version:generate": "node -e \"fs=require('fs');v=require('child_process').execSync('git rev-parse --short HEAD').toString().trim();fs.writeFileSync('version.json',JSON.stringify({version:v}))\"",
     "lint": "eslint .",
     "serve": "firebase emulators:start --only functions",
     "shell": "firebase functions:shell",

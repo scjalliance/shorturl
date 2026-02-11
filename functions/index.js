@@ -6,10 +6,10 @@ admin.initializeApp();
 
 const escapeHtml = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
-const VERSION = 202105051348;
+const VERSION = (() => { try { return require('./version.json').version; } catch { return 'unknown'; } })();
 const db = admin.firestore();
 
-exports.redir = functions.https.onRequest((request, response) => {
+const redirHandler = (request, response) => {
     let hostname = request.hostname.replace(/^qr\./, "");
     const ifCreateQRRequest = hostname !== request.hostname;
 
@@ -179,4 +179,6 @@ exports.redir = functions.https.onRequest((request, response) => {
 
         return undefined;
     });
-});
+};
+
+exports.redirV2 = functions.https.onRequest(redirHandler);
