@@ -30,7 +30,7 @@ jobs:
 
       - name: Deploy to production
         run: |
-          npx firebase-tools deploy \
+          npx firebase-tools@15.5.1 deploy \
             --only functions:redirV2,hosting \
             --project scj-short-url \
             --force

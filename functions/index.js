@@ -12,7 +12,7 @@ const db = admin.firestore();
 const redirHandler = (request, response) => {
     const requestHostname = request.hostname.replace(/^qr\./, "");
     const ifCreateQRRequest = requestHostname !== request.hostname;
-    let hostname = process.env.SHORTURL_HOSTNAME || requestHostname;
+    const hostname = process.env.SHORTURL_HOSTNAME || requestHostname;
 
     let url = request.url.replace(/^\/+qr\/+/, "/");
     const isRequestViaQrCode = url !== request.url;

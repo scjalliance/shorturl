@@ -35,7 +35,7 @@ jobs:
       - name: Deploy to preview channel
         id: deploy
         run: |
-          OUTPUT=$(npx firebase-tools hosting:channel:deploy "pr-${{ github.event.pull_request.number }}" \
+          OUTPUT=$(npx firebase-tools@15.5.1 hosting:channel:deploy "pr-${{ github.event.pull_request.number }}" \
             --only prod \
             --expires 7d \
             --no-authorized-domains \
