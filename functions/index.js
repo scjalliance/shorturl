@@ -48,10 +48,13 @@ const redirHandler = (request, response) => {
                 return documentSnapshot.ref.update({
                     qrCreateCount: FieldValue.increment(1),
                     qrCreateLast: FieldValue.serverTimestamp()
-                }).then(() => QRCode.toFileStream(
-                    response,
-                    `https://${hostname}/qr${url}`
-                ));
+                }).then(() => {
+                    response.contentType("image/png");
+                    return QRCode.toFileStream(
+                        response,
+                        `https://${hostname}/qr${url}`
+                    );
+                });
             }
             
             if (isRequestViaQrCode) {
