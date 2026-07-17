@@ -15,14 +15,16 @@
   },
   "main": "index.js",
   "dependencies": {
-    "firebase-admin": "^12",
+    "firebase-admin": "^13",
     "firebase-functions": "^6",
     "qrcode": "^1.5.4"
   },
+  "overrides": {
+    "uuid": "^11.1.1"
+  },
   "devDependencies": {
     "eslint": "^8",
-    "eslint-plugin-promise": "^7",
-    "firebase-functions-test": "^3"
+    "eslint-plugin-promise": "^7"
   },
   "private": true
 }
