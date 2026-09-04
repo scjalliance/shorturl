@@ -19,6 +19,10 @@ type Handler struct {
 	// HostOverride, when set, replaces the request host as the Firestore
 	// collection name. It maps to the SHORTURL_HOSTNAME environment variable.
 	HostOverride string
+	// HostAliases maps a request host to the collection that serves it, for
+	// example "www.example.com" to "example.com". It maps to the
+	// SHORTURL_HOST_ALIASES environment variable. Applied after HostOverride.
+	HostAliases map[string]string
 	// Client performs passthrough requests. Defaults to a client with a 30s
 	// timeout.
 	Client *http.Client
@@ -35,6 +39,9 @@ const defaultRedirectStatus = http.StatusTemporaryRedirect
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	req := ParseRequest(r, h.HostOverride)
+	if alias, ok := h.HostAliases[req.Hostname]; ok {
+		req.Hostname = alias
+	}
 
 	if !ValidID(req.Hostname) || !ValidID(req.Slug) {
 		h.notFound(w, req)

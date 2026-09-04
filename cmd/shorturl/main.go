@@ -5,6 +5,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -46,10 +47,16 @@ func run(logger *slog.Logger) error {
 	}
 	defer client.Close()
 
+	aliases, err := shorturl.ParseHostAliases(os.Getenv("SHORTURL_HOST_ALIASES"))
+	if err != nil {
+		return fmt.Errorf("SHORTURL_HOST_ALIASES: %w", err)
+	}
+
 	h := &shorturl.Handler{
 		Store:        &shorturl.FirestoreStore{Client: client},
 		Version:      version,
 		HostOverride: os.Getenv("SHORTURL_HOSTNAME"),
+		HostAliases:  aliases,
 		Logger:       logger,
 	}
 

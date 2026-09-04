@@ -1,6 +1,7 @@
 package shorturl
 
 import (
+	"fmt"
 	"net"
 	"net/http"
 	"regexp"
@@ -88,4 +89,24 @@ func originalHost(r *http.Request) string {
 		host = h
 	}
 	return host
+}
+
+// ParseHostAliases parses the SHORTURL_HOST_ALIASES format: comma separated
+// "host:collection" pairs, for example "www.example.com:example.com". Blank
+// entries are ignored; a malformed entry is an error.
+func ParseHostAliases(s string) (map[string]string, error) {
+	aliases := map[string]string{}
+	for _, pair := range strings.Split(s, ",") {
+		pair = strings.TrimSpace(pair)
+		if pair == "" {
+			continue
+		}
+		from, to, ok := strings.Cut(pair, ":")
+		from, to = strings.TrimSpace(from), strings.TrimSpace(to)
+		if !ok || from == "" || to == "" {
+			return nil, fmt.Errorf("host alias %q is not host:collection", pair)
+		}
+		aliases[from] = to
+	}
+	return aliases, nil
 }
