@@ -111,7 +111,7 @@ func numberOf(v any) (int, bool) {
 	case int64:
 		return int(x), true
 	case float64:
-		if math.IsNaN(x) || math.IsInf(x, 0) {
+		if math.IsNaN(x) || math.IsInf(x, 0) || math.Trunc(x) != x {
 			return 0, false
 		}
 		return int(x), true

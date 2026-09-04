@@ -75,7 +75,12 @@ func run(ctx context.Context, project string) error {
 			}
 			for _, p := range paths {
 				rules++
-				pattern, _ := p.Data()["pattern"].(string)
+				pattern, isString := p.Data()["pattern"].(string)
+				if !isString || pattern == "" {
+					problems++
+					fmt.Printf("MISSING PATTERN   %s/%s/paths/%s  %v\n", col.ID, doc.Ref.ID, p.Ref.ID, p.Data()["pattern"])
+					continue
+				}
 				re, err := regexp.Compile(pattern)
 				if err != nil {
 					problems++

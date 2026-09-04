@@ -50,7 +50,7 @@ func (h *Handler) passthrough(ctx context.Context, w http.ResponseWriter, r *htt
 	}
 	up, err := http.NewRequestWithContext(ctx, r.Method, destination, body)
 	if err != nil {
-		h.Logger.Warn("passthrough request", "destination", destination, "err", err)
+		h.logger().Warn("passthrough request", "destination", destination, "err", err)
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return
 	}
@@ -70,7 +70,7 @@ func (h *Handler) passthrough(ctx context.Context, w http.ResponseWriter, r *htt
 
 	res, err := h.client().Do(up)
 	if err != nil {
-		h.Logger.Warn("passthrough upstream", "destination", destination, "err", err)
+		h.logger().Warn("passthrough upstream", "destination", destination, "err", err)
 		w.Header().Set("X-ShortUrl-Ver", h.Version)
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return
@@ -79,7 +79,7 @@ func (h *Handler) passthrough(ctx context.Context, w http.ResponseWriter, r *htt
 
 	w.Header().Set("X-ShortUrl-Ver", h.Version)
 	if (res.StatusCode < 200 || res.StatusCode > 299) && !link.PassthroughAnyStatus {
-		h.Logger.Warn("passthrough upstream status", "destination", destination, "status", res.StatusCode)
+		h.logger().Warn("passthrough upstream status", "destination", destination, "status", res.StatusCode)
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return
 	}
@@ -90,7 +90,7 @@ func (h *Handler) passthrough(ctx context.Context, w http.ResponseWriter, r *htt
 	}
 	w.WriteHeader(res.StatusCode)
 	if _, err := io.Copy(w, res.Body); err != nil {
-		h.Logger.Warn("passthrough copy", "destination", destination, "err", err)
+		h.logger().Warn("passthrough copy", "destination", destination, "err", err)
 	}
 }
 

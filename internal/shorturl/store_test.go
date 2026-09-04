@@ -26,6 +26,10 @@ func TestLinkFromMapIgnoresFalsyFrameAndBadStatus(t *testing.T) {
 	if l.StatusCode != 0 {
 		t.Errorf("out of range status accepted: %+v", l)
 	}
+	l = LinkFromMap(map[string]any{"statusCode": float64(302.5)})
+	if l.StatusCode != 0 {
+		t.Errorf("fractional status accepted: %+v", l)
+	}
 }
 
 func TestValidID(t *testing.T) {

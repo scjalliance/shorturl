@@ -54,6 +54,7 @@ jobs:
             --region "$REGION" \
             --image "${{ steps.image.outputs.image }}" \
             --platform managed \
+            --service-account "shorturl-run@${{ vars.GCP_PROJECT_ID }}.iam.gserviceaccount.com" \
             --allow-unauthenticated \
             --min-instances 0 \
             --max-instances 10 \
