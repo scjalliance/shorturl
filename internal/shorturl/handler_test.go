@@ -154,7 +154,16 @@ func TestQRHost(t *testing.T) {
 	if w.Code != 200 || w.Header().Get("Content-Type") != "image/png" {
 		t.Fatalf("got %d %q", w.Code, w.Header().Get("Content-Type"))
 	}
-	if len(fs.qrs) != 1 || len(fs.clicks) != 0 {
+	if got := decodeQR(t, w.Body.Bytes()); got != "https://example.com/qr/demo" {
+		t.Errorf("QR code encodes %q, want the production /qr/ URL for the slug", got)
+	}
+	// A /qr/ path on the qr host encodes the collapsed URL, not /qr/qr/, and
+	// keeps the query string.
+	w = do(h, "GET", "qr.example.com", "/qr/demo?x=1", nil)
+	if got := decodeQR(t, w.Body.Bytes()); got != "https://example.com/qr/demo?x=1" {
+		t.Errorf("QR code for a /qr/ path encodes %q", got)
+	}
+	if len(fs.qrs) != 2 || len(fs.clicks) != 0 {
 		t.Errorf("qr creation should count qrCreate only: qrs=%v clicks=%v", fs.qrs, fs.clicks)
 	}
 	// Missing slug on the qr host follows the normal 404 flow.
