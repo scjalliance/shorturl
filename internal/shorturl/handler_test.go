@@ -275,3 +275,33 @@ func TestPassthrough(t *testing.T) {
 		t.Errorf("passthroughAnyStatus should relay 418, got %d", w.Code)
 	}
 }
+
+// TestPassthroughEmptyPost mirrors a Google push notification: a POST with
+// no body. The upstream must see Content-Length: 0, not a chunked stream.
+func TestPassthroughEmptyPost(t *testing.T) {
+	var seenLength int64 = -2
+	var seenTE []string
+	var seenState string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seenLength = r.ContentLength
+		seenTE = r.TransferEncoding
+		seenState = r.Header.Get("X-Goog-Resource-State")
+		w.WriteHeader(200)
+	}))
+	defer upstream.Close()
+	h, _ := newHandler(map[string]Link{"example.com/push": {Destination: upstream.URL + "/hook", Passthrough: true, PassthroughAnyStatus: true}})
+	r := httptest.NewRequest("POST", "http://placeholder/push", nil)
+	r.Host = "example.com"
+	r.Header.Set("X-Goog-Resource-State", "sync")
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+	if w.Code != 200 {
+		t.Fatalf("got %d", w.Code)
+	}
+	if seenLength != 0 || len(seenTE) != 0 {
+		t.Errorf("upstream saw Content-Length %d, Transfer-Encoding %v; want 0 and none", seenLength, seenTE)
+	}
+	if seenState != "sync" {
+		t.Errorf("X-Goog-Resource-State not forwarded: %q", seenState)
+	}
+}
