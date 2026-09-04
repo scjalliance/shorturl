@@ -15,6 +15,7 @@ concurrency:
 env:
   REGION: us-central1
   SERVICE: shorturl
+  PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
 
 jobs:
   deploy:
@@ -41,20 +42,22 @@ jobs:
       - name: Build and push image
         id: image
         run: |
-          IMAGE="${REGION}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/${SERVICE}/${SERVICE}:${GITHUB_SHA::7}"
+          IMAGE="${REGION}-docker.pkg.dev/${PROJECT_ID}/${SERVICE}/${SERVICE}:${GITHUB_SHA::7}"
           gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet
           docker build --build-arg VERSION="${GITHUB_SHA::7}" -t "$IMAGE" .
           docker push "$IMAGE"
           echo "image=$IMAGE" >> "$GITHUB_OUTPUT"
 
       - name: Deploy to Cloud Run
+        env:
+          IMAGE: ${{ steps.image.outputs.image }}
         run: |
           gcloud run deploy "$SERVICE" \
-            --project "${{ vars.GCP_PROJECT_ID }}" \
+            --project "$PROJECT_ID" \
             --region "$REGION" \
-            --image "${{ steps.image.outputs.image }}" \
+            --image "$IMAGE" \
             --platform managed \
-            --service-account "shorturl-run@${{ vars.GCP_PROJECT_ID }}.iam.gserviceaccount.com" \
+            --service-account "shorturl-run@${PROJECT_ID}.iam.gserviceaccount.com" \
             --allow-unauthenticated \
             --min-instances 0 \
             --max-instances 10 \
@@ -71,5 +74,5 @@ jobs:
         run: |
           npx firebase-tools@15.5.1 deploy \
             --only hosting,firestore:rules \
-            --project "${{ vars.GCP_PROJECT_ID }}" \
+            --project "$PROJECT_ID" \
             --force

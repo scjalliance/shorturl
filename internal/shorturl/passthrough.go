@@ -54,6 +54,9 @@ func (h *Handler) passthrough(ctx context.Context, w http.ResponseWriter, r *htt
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return
 	}
+	if body != nil && r.ContentLength > 0 {
+		up.ContentLength = r.ContentLength
+	}
 	up.Header.Set("Accept", "*/*")
 	if v := r.Header.Get("Accept"); v != "" {
 		up.Header.Set("Accept", v)

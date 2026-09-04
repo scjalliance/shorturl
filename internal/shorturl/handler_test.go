@@ -205,9 +205,11 @@ func TestUsePaths(t *testing.T) {
 func TestPassthrough(t *testing.T) {
 	var seen http.Header
 	var seenMethod, seenBody string
+	var seenLength int64
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		seen = r.Header.Clone()
 		seenMethod = r.Method
+		seenLength = r.ContentLength
 		b, _ := io.ReadAll(r.Body)
 		seenBody = string(b)
 		w.Header().Set("Content-Type", "application/json")
@@ -243,6 +245,9 @@ func TestPassthrough(t *testing.T) {
 	}
 	if seenMethod != "POST" || seenBody != "payload" {
 		t.Errorf("method/body not forwarded: %s %q", seenMethod, seenBody)
+	}
+	if seenLength != int64(len("payload")) {
+		t.Errorf("upstream Content-Length = %d, want %d", seenLength, len("payload"))
 	}
 	for k, want := range map[string]string{
 		"Authorization":        "Bearer t",
