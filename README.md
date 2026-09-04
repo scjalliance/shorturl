@@ -124,5 +124,10 @@ motivated the port in `docs/review-2026-09-03.md`, the design in
 `docs/superpowers/specs/2026-09-03-go-port-design.md`, and the step by step
 plan in `docs/superpowers/plans/2026-09-03-go-port.md`.
 
-**Next:** execute the plan from Task 1. Nothing in `functions/` changes
-until the cutover tasks at the end of the plan.
+**Status (2026-09-03):** Tasks 1 through 11 of the plan are done. The Go
+service, tests, container, CI, deploy workflow, and the cloud identity and
+registry setup are in place, and an idle Cloud Run service exists. Hosting
+still routes to the Cloud Function.
+
+**Next:** merge the port, then Task 12 (repoint the Hosting rewrite) and
+Task 13 (remove `functions/`) as separate pull requests.

@@ -225,9 +225,12 @@ so no environment specific values live in the workflow files.
 ### Identity
 
 One deployer service account with `roles/run.admin`,
-`roles/artifactregistry.writer`, `roles/firebasehosting.admin`,
-`roles/firebaserules.admin`, and `roles/iam.serviceAccountUser` on the Cloud
-Run runtime service account. The runtime service account needs only
+`roles/firebasehosting.admin`, `roles/firebaserules.admin`,
+`roles/firebase.viewer`, and `roles/serviceusage.serviceUsageConsumer` on the
+project, `roles/artifactregistry.writer` on the `shorturl` repository only, and
+`roles/iam.serviceAccountUser` on the Cloud Run runtime service account. The
+Workload Identity provider's attribute condition admits only this repository's
+`main` branch. The runtime service account needs only
 `roles/datastore.user`. The JSON key secret is deleted after cutover.
 
 ## Cutover
