@@ -8,7 +8,7 @@ A Firebase-hosted URL shortener with QR code generation, reverse proxy passthrou
 Request → Firebase Hosting → redirV2 Cloud Function → Firestore lookup → response
 ```
 
-- **Runtime:** Node.js 20, Firebase Cloud Functions v6
+- **Runtime:** Node.js 20, Firebase Cloud Functions v2 API (`firebase-functions` 7.x)
 - **Database:** Cloud Firestore (collections keyed by hostname, documents by slug)
 - **Hosting:** Firebase Hosting with all non-root paths rewritten to the `redirV2` function
 - **Security:** Firestore rules deny all client access; data is accessed exclusively via Admin SDK
@@ -112,6 +112,22 @@ example.com/                     # collection = hostname
 
 | Package | Purpose |
 |---|---|
-| `firebase-admin@^12` | Firestore access, app initialization |
-| `firebase-functions@^6` | Cloud Functions HTTP handler |
+| `firebase-admin@^13` | Firestore access, app initialization |
+| `firebase-functions@^7` | Cloud Functions HTTP handler |
 | `qrcode@^1.5.4` | QR code PNG generation |
+
+## Status
+
+Planning a port to Go on Cloud Run behind the same Firebase Hosting sites.
+The current behavior is documented in `docs/behavior.md`, the review that
+motivated the port in `docs/review-2026-09-03.md`, the design in
+`docs/superpowers/specs/2026-09-03-go-port-design.md`, and the step by step
+plan in `docs/superpowers/plans/2026-09-03-go-port.md`.
+
+**Status (2026-09-03):** Tasks 1 through 11 of the plan are done. The Go
+service, tests, container, CI, deploy workflow, and the cloud identity and
+registry setup are in place, and an idle Cloud Run service exists. Hosting
+still routes to the Cloud Function.
+
+**Next:** merge the port, then Task 12 (repoint the Hosting rewrite) and
+Task 13 (remove `functions/`) as separate pull requests.
