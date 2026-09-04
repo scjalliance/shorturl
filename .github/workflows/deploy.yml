@@ -69,19 +69,14 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
-          cache-dependency-path: functions/package-lock.json
 
-      # The prod Hosting target pins the redirV2 function, so firebase deploy
-      # runs the functions predeploy hooks (lint) and needs their dependencies.
-      # Remove this step together with functions/ in the cleanup task.
-      - name: Install function dependencies
-        run: npm ci
-        working-directory: functions
-
+      # Only the go Hosting target is deployed here. The prod target pins the
+      # redirV2 function, and deploying it would redeploy that function, which
+      # this identity deliberately cannot do. Switch to "hosting" once prod
+      # routes to Cloud Run.
       - name: Deploy hosting and Firestore rules
         run: |
           npx firebase-tools@15.5.1 deploy \
-            --only hosting,firestore:rules \
+            --only hosting:go,firestore:rules \
             --project "$PROJECT_ID" \
             --force
