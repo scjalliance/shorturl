@@ -129,9 +129,8 @@ service, tests, container, CI, deploy workflow, and the cloud identity and
 registry setup are in place, and an idle Cloud Run service exists. Hosting
 still routes to the Cloud Function.
 
-A second Hosting site (`go` target in `firebase.json`) routes to the Cloud
-Run service so a deprecated test domain can exercise it while every other
-domain stays on the function.
+**Status (2026-09-04):** Cutover done. Both Hosting sites route to the Cloud
+Run service; the Cloud Function is still deployed but receives no traffic.
 
-**Next:** test on the `go` site, then Task 12 (repoint the `prod` rewrite)
-and Task 13 (remove `functions/`) as separate pull requests.
+**Next:** Task 13 after a week: remove `functions/`, the preview workflows,
+the function itself, and the old deploy key.

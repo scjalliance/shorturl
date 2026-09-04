@@ -305,3 +305,25 @@ func TestPassthroughEmptyPost(t *testing.T) {
 		t.Errorf("X-Goog-Resource-State not forwarded: %q", seenState)
 	}
 }
+
+func TestHostAlias(t *testing.T) {
+	h, fs := newHandler(map[string]Link{"example.com/demo": {Destination: "https://example.org/"}})
+	h.HostAliases = map[string]string{"www.example.com": "example.com"}
+	w := do(h, "GET", "www.example.com", "/demo", nil)
+	if w.Code != 307 || w.Header().Get("Location") != "https://example.org/" {
+		t.Errorf("aliased host: got %d %q", w.Code, w.Header().Get("Location"))
+	}
+	if len(fs.clicks) != 1 || fs.clicks[0] != "example.com/demo" {
+		t.Errorf("click should land on the aliased collection: %v", fs.clicks)
+	}
+	// The QR host form of an aliased host also resolves.
+	w = do(h, "GET", "qr.www.example.com", "/demo", nil)
+	if w.Code != 200 || w.Header().Get("Content-Type") != "image/png" {
+		t.Errorf("qr on aliased host: got %d %q", w.Code, w.Header().Get("Content-Type"))
+	}
+	// Unaliased hosts are untouched.
+	w = do(h, "GET", "other.example.com", "/demo", nil)
+	if w.Code != 302 || w.Header().Get("Location") != "/404/demo" {
+		t.Errorf("unaliased host: got %d %q", w.Code, w.Header().Get("Location"))
+	}
+}

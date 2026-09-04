@@ -182,6 +182,7 @@ codes, the 404 flow, and the `apex` redirect, is preserved.
 | `PORT` | `8080` | set by Cloud Run |
 | `GOOGLE_CLOUD_PROJECT` | detected | Firestore project |
 | `SHORTURL_HOSTNAME` | unset | collection override, same as today |
+| `SHORTURL_HOST_ALIASES` | unset | comma separated `host:collection` pairs, e.g. a `www.` host served from the apex collection; set on the Cloud Run service, preserved across deploys |
 
 No secrets. The service authenticates to Firestore with the Cloud Run
 service identity.

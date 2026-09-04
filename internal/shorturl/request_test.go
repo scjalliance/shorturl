@@ -90,3 +90,19 @@ func TestParseRequestPrefersForwardedHost(t *testing.T) {
 		t.Errorf("got %+v, want Hostname example.com and QRHost true", got)
 	}
 }
+
+func TestParseHostAliases(t *testing.T) {
+	got, err := ParseHostAliases(" www.example.com:example.com, ,alt.example.com : example.com ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got["www.example.com"] != "example.com" || got["alt.example.com"] != "example.com" || len(got) != 2 {
+		t.Errorf("got %v", got)
+	}
+	if m, err := ParseHostAliases(""); err != nil || len(m) != 0 {
+		t.Errorf("empty input: %v %v", m, err)
+	}
+	if _, err := ParseHostAliases("www.example.com"); err == nil {
+		t.Error("missing collection should be an error")
+	}
+}

@@ -70,13 +70,9 @@ jobs:
         with:
           node-version: 22
 
-      # Only the go Hosting target is deployed here. The prod target pins the
-      # redirV2 function, and deploying it would redeploy that function, which
-      # this identity deliberately cannot do. Switch to "hosting" once prod
-      # routes to Cloud Run.
       - name: Deploy hosting and Firestore rules
         run: |
           npx firebase-tools@15.5.1 deploy \
-            --only hosting:go,firestore:rules \
+            --only hosting,firestore:rules \
             --project "$PROJECT_ID" \
             --force
