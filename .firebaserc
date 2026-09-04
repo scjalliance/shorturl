@@ -7,6 +7,9 @@
       "hosting": {
         "prod": [
           "scj-short-url"
+        ],
+        "go": [
+          "scj-short-url-go"
         ]
       }
     }
