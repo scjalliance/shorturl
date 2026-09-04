@@ -129,5 +129,9 @@ service, tests, container, CI, deploy workflow, and the cloud identity and
 registry setup are in place, and an idle Cloud Run service exists. Hosting
 still routes to the Cloud Function.
 
-**Next:** merge the port, then Task 12 (repoint the Hosting rewrite) and
-Task 13 (remove `functions/`) as separate pull requests.
+A second Hosting site (`go` target in `firebase.json`) routes to the Cloud
+Run service so a deprecated test domain can exercise it while every other
+domain stays on the function.
+
+**Next:** test on the `go` site, then Task 12 (repoint the `prod` rewrite)
+and Task 13 (remove `functions/`) as separate pull requests.

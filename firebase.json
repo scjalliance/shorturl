@@ -10,31 +10,58 @@
     ],
     "source": "functions"
   },
-  "hosting": {
-    "target": "prod",
-    "public": "public",
-    "ignore": [
-      "firebase.json",
-      "**/.*",
-      "**/node_modules/**"
-    ],
-    "redirects": [
-      {
-        "source": "/",
-        "destination": "/apex",
-        "type": 302
-      }
-    ],
-    "rewrites": [
-      {
-        "source": "**",
-        "function": {
-          "functionId": "redirV2",
-          "pinTag": true
+  "hosting": [
+    {
+      "target": "prod",
+      "public": "public",
+      "ignore": [
+        "firebase.json",
+        "**/.*",
+        "**/node_modules/**"
+      ],
+      "redirects": [
+        {
+          "source": "/",
+          "destination": "/apex",
+          "type": 302
         }
-      }
-    ]
-  },
+      ],
+      "rewrites": [
+        {
+          "source": "**",
+          "function": {
+            "functionId": "redirV2",
+            "pinTag": true
+          }
+        }
+      ]
+    },
+    {
+      "target": "go",
+      "public": "public",
+      "ignore": [
+        "firebase.json",
+        "**/.*",
+        "**/node_modules/**"
+      ],
+      "redirects": [
+        {
+          "source": "/",
+          "destination": "/apex",
+          "type": 302
+        }
+      ],
+      "rewrites": [
+        {
+          "source": "**",
+          "run": {
+            "serviceId": "shorturl",
+            "region": "us-central1"
+          }
+        }
+      ]
+    }
+  ],
   "emulators": {
     "functions": {
       "port": 5001
