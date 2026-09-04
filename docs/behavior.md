@@ -116,8 +116,10 @@ Reverse proxy to `destination`.
 2. For each, build `RegExp(pattern)` (no flags) and run it against the
    remainder. The first document whose pattern matches **and has at least
    one named capture group** wins. A pattern with no named groups never
-   matches. A pattern that fails to compile throws and hangs the request.
-   **port:** logged and skipped.
+   matches, which silently disables every exact-match rule such as
+   `^file\.zip$`. **port:** a matching rule with no named groups wins and
+   its destination is used verbatim. A pattern that fails to compile throws
+   and hangs the request. **port:** logged and skipped.
 3. On a match, increment `matchCount` and set `matchLast` on the rule (fire
    and forget), then take the rule's `destination` and replace every
    `${name}` with the group's value. A named group that did not participate

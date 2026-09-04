@@ -131,8 +131,11 @@ and HEAD. Non-2xx upstream becomes 500 unless `passthroughAnyStatus`.
 ### Path rules
 
 `ResolvePath(logger, rules, remainder)` compiles each pattern with
-`regexp.Compile`, skips patterns that fail or have no named group, and
-returns the first match with `${name}` substituted. Go 1.22 and later accept
+`regexp.Compile`, skips patterns that fail to compile, and returns the first
+match with `${name}` substituted. Unlike the function it does not require a
+named group: the production data has 27 exact-match rules (GitHub release
+asset mirrors) that the function could never match, and the intent of each
+is unambiguous. Go 1.22 and later accept
 `(?<name>...)`.
 
 ### QR
@@ -160,6 +163,7 @@ request access log; Cloud Run produces one.
 | Empty or invalid slug | 500 | not-found flow |
 | Firestore or other async error | request hangs to timeout | 500 |
 | Path rule pattern fails to compile | request hangs | rule skipped, logged |
+| Path rule with no named group | never matches | matches; destination used verbatim |
 | Named group did not participate | substitutes `,` | substitutes `` |
 | Missing `destination` | redirect to `undefined` | not-found flow |
 | Counter write fails | unhandled rejection, process may exit | logged, redirect still served |
