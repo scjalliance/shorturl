@@ -3,3 +3,9 @@
 docs
 public
 *.md
+backups
+.firebase
+.claude
+.remember
+.secrets
+*.log

@@ -109,7 +109,10 @@ Reverse proxy to `destination`.
   `X-Passthrough-Slug`, `X-ShortUrl-Ver` (build version).
 - Method is forwarded. Body is forwarded for every method except GET and
   HEAD. The upstream call times out after 30 seconds.
-- Redirects from the upstream are followed.
+- Upstream redirects are followed, up to 10. A 301, 302, or 303 is
+  followed as a GET without the body. A 307 or 308 on a request with a body
+  is not followed, because the body cannot be re-sent; the 3xx is treated
+  like any other non-2xx status.
 - Response: `X-ShortUrl-Ver` is always set. If the upstream status is not
   2xx and `passthroughAnyStatus` is falsy, respond
   `500 Internal Server Error`. Otherwise copy only
@@ -144,7 +147,8 @@ rules that use them.
 2. An empty destination takes the not-found flow.
 3. `frame` truthy: respond `200 text/html` with an HTML5 page whose
    `<title>` and iframe `title` are the `frame` value, an iframe whose
-   `src` is the destination, and a script that calls
+   `src` is the destination as normalized by Go's `html/template` (an unsafe
+   scheme such as `javascript:` becomes `#ZgotmplZ`), and a script that calls
    `history.replaceState` with `https://<collection host><URL>` so the
    address bar shows the short link.
 4. Otherwise respond with `Location: destination` and status `statusCode`

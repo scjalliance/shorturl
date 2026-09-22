@@ -1,7 +1,7 @@
 // Command pathaudit walks every link in Firestore and reports which path
 // rules would not behave the same under Go's RE2 regexp engine, plus counts
-// of each link mode. Run it before cutover and again before deleting the
-// Cloud Function.
+// of each link mode. Run it after adding or editing path rules that use
+// lookaround or backreferences.
 //
 //	go run ./cmd/pathaudit -project <project-id>
 package main

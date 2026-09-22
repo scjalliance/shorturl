@@ -125,4 +125,4 @@ example.com/                     # collection = hostname
 
 Running on Cloud Run since 2026-09-04. The Cloud Function it replaced was removed on 2026-09-22. Exact behavior is in `docs/behavior.md`; the port's design and the review that motivated it are in `docs/superpowers/specs/2026-09-03-go-port-design.md` and `docs/review-2026-09-03.md`.
 
-**Next:** passthrough requests fail with a 500 when the upstream sends an HTTP/2 GOAWAY after the body was written, because the upstream request has no `GetBody`. Buffering the body fixes it.
+**Next:** passthrough requests with a body have no `GetBody`, so they fail with a 500 when the upstream sends an HTTP/2 GOAWAY after the body was written, and a 307 or 308 from the upstream is not followed. Buffering the body fixes both.
