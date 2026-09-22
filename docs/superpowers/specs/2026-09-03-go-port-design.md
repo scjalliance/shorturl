@@ -191,6 +191,13 @@ request access log; Cloud Run produces one.
 | QR image caching | none | `public, max-age=86400` |
 | Frame HTML | quirks mode, unclosed iframe | HTML5, closed iframe |
 | Regex dialect | JavaScript | RE2 (audit before cutover) |
+| Counter writes | per request, fire and forget | batched per instance, flushed every 5 s or more (see Handler) |
+| QR create counter | awaited before the image is sent | batched like the others |
+| `statusCode` | any truthy value | a number from 200 to 599, else 307 |
+| Host aliases | none | `SHORTURL_HOST_ALIASES` maps a host to another collection |
+| Passthrough upstream timeout | function timeout | 30 s |
+| Passthrough 307/308 on a request with a body | followed, body re-sent | not followed; treated as non-2xx |
+| Frame iframe `src` | `encodeURI(destination)` | `html/template` URL normalization; unsafe schemes become `#ZgotmplZ` |
 
 Everything else, including counter field names, header allowlists, status
 codes, the 404 flow, and the `apex` redirect, is preserved.
@@ -271,10 +278,24 @@ Workload Identity provider's attribute condition admits only this repository's
 
 ### Rollback
 
-Revert the `firebase.json` commit and let `deploy.yml` run, or run
-`firebase deploy --only hosting` from the previous commit. The function is
-still deployed until step 6. No data changes are involved in either
-direction.
+The Cloud Function was deleted on 2026-09-22, so routing Hosting back to
+it is no longer possible. To roll back a bad release, send traffic to the
+previous Cloud Run revision:
+
+```bash
+gcloud run revisions list --service shorturl --region us-central1
+gcloud run services update-traffic shorturl --region us-central1 --to-revisions <revision>=100
+```
+
+This pins traffic to that revision. Later deploys create new revisions but
+send them no traffic until the pin is lifted, so after the fix is on `main`
+and deployed, return traffic to the latest revision:
+
+```bash
+gcloud run services update-traffic shorturl --region us-central1 --to-latest
+```
+
+No data changes are involved in either direction.
 
 ## Risks
 

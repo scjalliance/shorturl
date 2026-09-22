@@ -1,7 +1,11 @@
 .git
 .github
 docs
-functions
 public
-node_modules
 *.md
+backups
+.firebase
+.claude
+.remember
+.secrets
+*.log
