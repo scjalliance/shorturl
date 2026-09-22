@@ -5,13 +5,13 @@ A Firebase-hosted URL shortener with QR code generation, reverse proxy passthrou
 ## Architecture
 
 ```
-Request → Firebase Hosting → redirV2 Cloud Function → Firestore lookup → response
+Request → Firebase Hosting → Cloud Run (Go) → Firestore lookup → response
 ```
 
-- **Runtime:** Node.js 20, Firebase Cloud Functions v2 API (`firebase-functions` 7.x)
+- **Runtime:** Go 1.27 on Cloud Run, one distroless container (`cmd/shorturl`)
 - **Database:** Cloud Firestore (collections keyed by hostname, documents by slug)
-- **Hosting:** Firebase Hosting with all non-root paths rewritten to the `redirV2` function
-- **Security:** Firestore rules deny all client access; data is accessed exclusively via Admin SDK
+- **Hosting:** Firebase Hosting with all non-root paths rewritten to the `shorturl` Cloud Run service
+- **Security:** Firestore rules deny all client access; the service reads and writes with its own Cloud Run identity
 
 ## Features
 
@@ -48,47 +48,48 @@ can lag. The `*Last` fields hold the time of the latest visit.
 
 ## Project structure
 
-```
-functions/
-  index.js            # redirV2 Cloud Function (entire application logic)
-  package.json        # Dependencies: firebase-admin, firebase-functions, qrcode
-  .eslintrc.json      # Linting rules
-public/
-  index.html          # Root redirect (customize for your org)
-  404.html            # Fallback 404 page
-.github/workflows/
-  deploy.yml          # Push to main → production deploy
-  preview.yml         # PR → preview channel (expires 7 days)
-  preview-cleanup.yml # PR close → delete preview channel
-  codeql.yml          # Weekly + PR security scanning
-firebase.json         # Hosting rewrites, emulator config, predeploy hooks
-firestore.rules       # Deny all client access
-```
+| Path | Responsibility |
+|---|---|
+| `cmd/shorturl/` | entry point: env, Firestore client, HTTP server, shutdown |
+| `cmd/pathaudit/` | report of stored path rules that RE2 handles differently from JavaScript |
+| `internal/shorturl/request.go` | request parsing: host, slug, query, remainder |
+| `internal/shorturl/store.go` | `Store` interface, `Link`, `PathRule`, ID validation |
+| `internal/shorturl/firestore.go` | `Store` backed by Firestore |
+| `internal/shorturl/handler.go` | mode dispatch and the 404 flow |
+| `internal/shorturl/counters.go` | batched analytics counters |
+| `internal/shorturl/passthrough.go` | reverse proxy with header allowlists |
+| `internal/shorturl/paths.go` | path rule matching |
+| `internal/shorturl/qr.go`, `frame.go` | QR images and frame pages |
+| `public/` | static root redirect and 404 page |
+| `Dockerfile` | container build |
+| `.github/workflows/` | `ci.yml` (PR checks), `deploy.yml` (push to main), `codeql.yml` |
+| `firebase.json`, `firestore.rules` | Hosting rewrites; rules that deny all client access |
 
 ## Development
 
 ```bash
-cd functions
-npm install
-npm run lint        # ESLint
-npm run serve       # Firebase emulator (localhost:5000)
+go test ./...
+
+# The Firestore store test runs against the emulator and is skipped otherwise.
+npx firebase-tools@15.5.1 emulators:exec --only firestore --project shorturl-test "go test ./..."
 ```
 
-### Version stamping
+`gofmt -l .` must print nothing and `go vet ./...` must pass; CI checks both.
 
-The predeploy hook runs `npm run version:generate`, which writes the short Git SHA to `functions/version.json`. The function exposes this as the `X-ShortUrl-Ver` response header in passthrough mode.
+### Configuration
+
+| Variable | Meaning |
+|---|---|
+| `PORT` | listen port, set by Cloud Run (default `8080`) |
+| `GOOGLE_CLOUD_PROJECT` | Firestore project (detected when unset) |
+| `SHORTURL_HOSTNAME` | replaces the request host as the collection name |
+| `SHORTURL_HOST_ALIASES` | comma separated `host:collection` pairs, for example `www.example.com:example.com` |
+
+The build stamps the short Git SHA into the binary, reported as the `X-ShortUrl-Ver` header on passthrough requests and responses.
 
 ## Deployment
 
-Automated via GitHub Actions on push to `main`. PRs get ephemeral preview deployments.
-
-Manual deploy:
-
-```bash
-cd functions
-npm run version:generate
-firebase deploy --only functions,hosting
-```
+Automated via GitHub Actions on push to `main`: `deploy.yml` tests, builds and pushes the image, deploys it to Cloud Run, then deploys Hosting and Firestore rules. It authenticates with Workload Identity Federation, so no key is stored in the repo or in GitHub. Environment variables set on the Cloud Run service are kept across deploys.
 
 ## Firestore data model
 
@@ -115,27 +116,13 @@ example.com/                     # collection = hostname
 
 ## Dependencies
 
-| Package | Purpose |
+| Module | Purpose |
 |---|---|
-| `firebase-admin@^13` | Firestore access, app initialization |
-| `firebase-functions@^7` | Cloud Functions HTTP handler |
-| `qrcode@^1.5.4` | QR code PNG generation |
+| `cloud.google.com/go/firestore` | Firestore access |
+| `github.com/skip2/go-qrcode` | QR code PNG generation |
 
 ## Status
 
-Planning a port to Go on Cloud Run behind the same Firebase Hosting sites.
-The current behavior is documented in `docs/behavior.md`, the review that
-motivated the port in `docs/review-2026-09-03.md`, the design in
-`docs/superpowers/specs/2026-09-03-go-port-design.md`, and the step by step
-plan in `docs/superpowers/plans/2026-09-03-go-port.md`.
+Running on Cloud Run since 2026-09-04. The Cloud Function it replaced was removed on 2026-09-22. Exact behavior is in `docs/behavior.md`; the port's design and the review that motivated it are in `docs/superpowers/specs/2026-09-03-go-port-design.md` and `docs/review-2026-09-03.md`.
 
-**Status (2026-09-03):** Tasks 1 through 11 of the plan are done. The Go
-service, tests, container, CI, deploy workflow, and the cloud identity and
-registry setup are in place, and an idle Cloud Run service exists. Hosting
-still routes to the Cloud Function.
-
-**Status (2026-09-04):** Cutover done. Both Hosting sites route to the Cloud
-Run service; the Cloud Function is still deployed but receives no traffic.
-
-**Next:** Task 13 after a week: remove `functions/`, the preview workflows,
-the function itself, and the old deploy key.
+**Next:** passthrough requests fail with a 500 when the upstream sends an HTTP/2 GOAWAY after the body was written, because the upstream request has no `GetBody`. Buffering the body fixes it.
