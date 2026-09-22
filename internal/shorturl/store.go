@@ -32,20 +32,19 @@ type PathRule struct {
 	Destination string
 }
 
-// Store reads links and records analytics. Record methods are best effort:
-// the handler calls them with a short timeout and only logs failures.
+// Store reads links and records analytics. Analytics writes are best
+// effort: the handler batches them, bounds each write with a short timeout,
+// and only logs failures.
 type Store interface {
 	// GetLink returns the link for slug under host. It returns ErrNotFound
 	// when the document does not exist.
 	GetLink(ctx context.Context, host, slug string) (Link, error)
 	// ListPathRules returns the link's path rules in document ID order.
 	ListPathRules(ctx context.Context, host, slug string) ([]PathRule, error)
-	// RecordClick increments clickCount and, when viaQR is set, qrUseCount.
-	RecordClick(ctx context.Context, host, slug string, viaQR bool) error
-	// RecordQRCreate increments qrCreateCount.
-	RecordQRCreate(ctx context.Context, host, slug string) error
-	// RecordPathMatch increments matchCount on one path rule.
-	RecordPathMatch(ctx context.Context, host, slug, ruleID string) error
+	// AddCounts adds each delta's N to the "<name>Count" field of doc and
+	// sets "<name>Last" to the delta's Last time. The returned error wraps
+	// ErrCounterRetry when the database reports the write was not applied.
+	AddCounts(ctx context.Context, doc CounterDoc, deltas map[string]Delta) error
 }
 
 // LinkFromMap converts a raw Firestore document into a Link using JavaScript

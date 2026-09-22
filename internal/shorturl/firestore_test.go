@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"testing"
+	"time"
 
 	"cloud.google.com/go/firestore"
 )
@@ -43,21 +44,42 @@ func TestFirestoreStore(t *testing.T) {
 	if err != nil || len(rules) != 1 || rules[0].ID != "r1" {
 		t.Fatalf("ListPathRules = %+v, %v", rules, err)
 	}
-	if err := s.RecordClick(ctx, "example.com", "demo", true); err != nil {
+	// Firestore keeps microseconds, so use a time that survives the trip.
+	t1 := time.Date(2026, 9, 21, 20, 0, 0, 123456000, time.UTC)
+	t2 := t1.Add(3 * time.Second)
+	link1 := CounterDoc{Host: "example.com", Slug: "demo"}
+	if err := s.AddCounts(ctx, link1, map[string]Delta{"click": {3, t1}, "qrUse": {1, t1}, "qrCreate": {2, t1}}); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.RecordQRCreate(ctx, "example.com", "demo"); err != nil {
+	if err := s.AddCounts(ctx, link1, map[string]Delta{"click": {1, t2}}); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.RecordPathMatch(ctx, "example.com", "demo", "r1"); err != nil {
+	if err := s.AddCounts(ctx, CounterDoc{Host: "example.com", Slug: "demo", Rule: "r1"}, map[string]Delta{"match": {4, t2}}); err != nil {
 		t.Fatal(err)
+	}
+	if err := s.AddCounts(ctx, CounterDoc{Host: "example.com", Slug: "missing"}, map[string]Delta{"click": {1, t2}}); err == nil || errors.Is(err, ErrCounterRetry) {
+		t.Errorf("counts on a missing doc: got %v, want a non-retryable error", err)
 	}
 	snap, err := doc.Get(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
 	d := snap.Data()
-	if d["clickCount"] != int64(1) || d["qrUseCount"] != int64(1) || d["qrCreateCount"] != int64(1) || d["clickLast"] == nil {
+	if d["clickCount"] != int64(4) || d["qrUseCount"] != int64(1) || d["qrCreateCount"] != int64(2) {
 		t.Errorf("counters = %v", d)
+	}
+	if last, _ := d["clickLast"].(time.Time); !last.Equal(t2) {
+		t.Errorf("clickLast = %v, want the visit time %v", d["clickLast"], t2)
+	}
+	if last, _ := d["qrCreateLast"].(time.Time); !last.Equal(t1) {
+		t.Errorf("qrCreateLast = %v, want %v", d["qrCreateLast"], t1)
+	}
+	rsnap, err := doc.Collection("paths").Doc("r1").Get(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rd := rsnap.Data()
+	if last, _ := rd["matchLast"].(time.Time); rd["matchCount"] != int64(4) || !last.Equal(t2) {
+		t.Errorf("rule counters = %v", rd)
 	}
 }

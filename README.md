@@ -41,6 +41,11 @@ Each redirect increments Firestore counters on the document:
 - `qrCreateCount` / `qrCreateLast` (when QR image is generated)
 - Per-path-pattern: `matchCount` / `matchLast`
 
+Counts are batched per instance and written at most every 5 seconds, so a
+busy link does not exceed Firestore's per-document write rate. An idle
+instance writes its counts on its next request or at shutdown, so totals
+can lag. The `*Last` fields hold the time of the latest visit.
+
 ## Project structure
 
 ```
