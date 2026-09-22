@@ -82,9 +82,9 @@ decoded either.
 type Store interface {
     GetLink(ctx, host, slug string) (Link, error)        // ErrNotFound when absent
     ListPathRules(ctx, host, slug string) ([]PathRule, error)
-    RecordClick(ctx, host, slug string, viaQR bool) error
-    RecordQRCreate(ctx, host, slug string) error
-    RecordPathMatch(ctx, host, slug, ruleID string) error
+    // adds Delta.N to "<name>Count", sets "<name>Last" to Delta.Last;
+    // ErrNotFound when absent, ErrCounterRetry when not applied
+    AddCounts(ctx, doc CounterDoc, deltas map[string]Delta) error
 }
 ```
 
@@ -97,9 +97,9 @@ must keep working. `statusCode` is accepted when it is a number between
 Slugs and hosts are checked with `ValidID` before any Firestore call.
 Invalid IDs return `ErrNotFound`.
 
-The Firestore implementation uses `firestore.Increment(1)` and
-`firestore.ServerTimestamp` in `Update` calls, producing the same field
-writes the function produced.
+The Firestore implementation uses `firestore.Increment(n)` and the visit
+timestamp in one `Update` call per document, producing the same fields the
+function wrote.
 
 ### Handler
 
@@ -111,12 +111,25 @@ writes the function produced.
 4. Record click (with `viaQR`).
 5. Dispatch: passthrough, then path rules, then redirect.
 
-Counter writes are synchronous with a 500 ms timeout and use
-`context.WithoutCancel` so a visitor closing the connection does not abort
-them. Cloud Run's request-based billing throttles CPU once the response is
-complete, which is why they are not goroutines. Failure is logged and never
-affects the response. The cost is one in-region Firestore write on the
-request path, typically 10 to 30 ms.
+Counters are batched in memory and flushed at most every 5 seconds per
+instance, one increment per document, with a 1 second timeout per write.
+The request that finds a flush due starts it in a goroutine at the top of
+`ServeHTTP` and waits for it before returning, so the writes overlap the
+request's own work but finish while Cloud Run still allocates CPU. The
+flush uses `context.WithoutCancel` so a visitor closing the connection does
+not abort it. `*Last` fields carry the latest visit time rather than
+`ServerTimestamp`. Writes Firestore rejected unapplied (`Aborted`,
+`ResourceExhausted`) are merged back for the next flush; other failures are
+dropped, since a timeout may have committed. Pending counts are flushed
+on SIGTERM after the server drains. An idle instance holds counts until
+its next request or its shutdown.
+
+Revised 2026-09-22. The first version wrote once per request,
+synchronously, with a 500 ms timeout. In production the busiest
+passthrough link took up to about 4,000 requests an hour, and on
+2026-09-21 a third of its counter writes timed out or were aborted for
+contention. Firestore sustains about one write per second on a single
+document.
 
 Redirects write `Location` directly rather than using `http.Redirect`, so
 relative destinations are sent as stored, matching Express.
@@ -261,11 +274,9 @@ direction.
 - **Regex dialect.** Mitigated by `pathaudit`. If a rule needs lookaround,
   rewrite it as two rules or a wider match with post-filtering in the
   destination template. Decide per rule before step 4.
-- **Firestore hot documents.** Unchanged from today. A burst on one link
-  will slow or fail counter writes. Redirects still succeed because the
-  write is bounded and non-fatal. If it becomes a problem, sample counter
-  writes or move counters to a sharded subcollection; both are out of scope
-  here.
+- **Firestore hot documents.** This risk was realized, and batching was
+  the fix (see Handler). Sharded counters were not needed and would
+  have changed the data model.
 - **Hosting to Cloud Run header behavior.** Verify `X-Forwarded-Host` on
   the first deployed revision before cutover; the smoke checklist covers it.
 - **Cold starts with `--min-instances 0`.** Expected under a second. Raise

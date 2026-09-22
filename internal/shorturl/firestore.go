@@ -3,6 +3,7 @@ package shorturl
 import (
 	"context"
 	"fmt"
+	"slices"
 
 	"cloud.google.com/go/firestore"
 	"google.golang.org/grpc/codes"
@@ -44,45 +45,41 @@ func (s *FirestoreStore) ListPathRules(ctx context.Context, host, slug string) (
 	return rules, nil
 }
 
-// RecordClick implements Store.
-func (s *FirestoreStore) RecordClick(ctx context.Context, host, slug string, viaQR bool) error {
-	updates := []firestore.Update{
-		{Path: "clickCount", Value: firestore.Increment(1)},
-		{Path: "clickLast", Value: firestore.ServerTimestamp},
+// AddCounts implements Store. Deltas are applied in name order in a single
+// update, so each counter document costs one write per call.
+func (s *FirestoreStore) AddCounts(ctx context.Context, doc CounterDoc, deltas map[string]Delta) error {
+	ref := s.Client.Doc(doc.String())
+	if ref == nil {
+		return fmt.Errorf("adding counts to %s: not a document path", doc)
 	}
-	if viaQR {
+	names := make([]string, 0, len(deltas))
+	for name, d := range deltas {
+		if d.N != 0 {
+			names = append(names, name)
+		}
+	}
+	if len(names) == 0 {
+		return nil
+	}
+	slices.Sort(names)
+	updates := make([]firestore.Update, 0, 2*len(names))
+	for _, name := range names {
 		updates = append(updates,
-			firestore.Update{Path: "qrUseCount", Value: firestore.Increment(1)},
-			firestore.Update{Path: "qrUseLast", Value: firestore.ServerTimestamp},
+			firestore.Update{Path: name + "Count", Value: firestore.Increment(deltas[name].N)},
+			firestore.Update{Path: name + "Last", Value: deltas[name].Last},
 		)
 	}
-	_, err := s.Client.Collection(host).Doc(slug).Update(ctx, updates)
-	if err != nil {
-		return fmt.Errorf("recording click on %s/%s: %w", host, slug, err)
+	_, err := ref.Update(ctx, updates)
+	switch status.Code(err) {
+	case codes.OK:
+		return nil
+	case codes.NotFound:
+		return fmt.Errorf("adding counts to %s: %w: %w", doc, ErrNotFound, err)
+	case codes.Aborted, codes.ResourceExhausted:
+		// Firestore rejected the write before applying it: contention or
+		// quota. Any other failure, a timeout above all, may have committed.
+		return fmt.Errorf("adding counts to %s: %w: %w", doc, ErrCounterRetry, err)
+	default:
+		return fmt.Errorf("adding counts to %s: %w", doc, err)
 	}
-	return nil
-}
-
-// RecordQRCreate implements Store.
-func (s *FirestoreStore) RecordQRCreate(ctx context.Context, host, slug string) error {
-	_, err := s.Client.Collection(host).Doc(slug).Update(ctx, []firestore.Update{
-		{Path: "qrCreateCount", Value: firestore.Increment(1)},
-		{Path: "qrCreateLast", Value: firestore.ServerTimestamp},
-	})
-	if err != nil {
-		return fmt.Errorf("recording qr create on %s/%s: %w", host, slug, err)
-	}
-	return nil
-}
-
-// RecordPathMatch implements Store.
-func (s *FirestoreStore) RecordPathMatch(ctx context.Context, host, slug, ruleID string) error {
-	_, err := s.Client.Collection(host).Doc(slug).Collection("paths").Doc(ruleID).Update(ctx, []firestore.Update{
-		{Path: "matchCount", Value: firestore.Increment(1)},
-		{Path: "matchLast", Value: firestore.ServerTimestamp},
-	})
-	if err != nil {
-		return fmt.Errorf("recording path match on %s/%s/%s: %w", host, slug, ruleID, err)
-	}
-	return nil
 }

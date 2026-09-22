@@ -2,11 +2,13 @@ package shorturl
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"errors"
 	"log/slog"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -28,8 +30,14 @@ type Handler struct {
 	Client *http.Client
 	// Logger receives operational logs. Defaults to slog.Default().
 	Logger *slog.Logger
-	// CounterTimeout bounds each analytics write. Defaults to 500ms.
+	// CounterInterval is the minimum time between analytics flushes on one
+	// instance. Defaults to 5s.
+	CounterInterval time.Duration
+	// CounterTimeout bounds each analytics write. Defaults to 1s.
 	CounterTimeout time.Duration
+
+	countersOnce sync.Once
+	ctr          *counters
 }
 
 const defaultRedirectStatus = http.StatusTemporaryRedirect
@@ -38,6 +46,9 @@ const defaultRedirectStatus = http.StatusTemporaryRedirect
 // redirect, with a 404 flow for unknown slugs.
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
+	// Start any due analytics flush now so it overlaps this request's work,
+	// and wait for it before returning, while the instance still has CPU.
+	defer h.counters().start(ctx)()
 	req := ParseRequest(r, h.HostOverride)
 	if alias, ok := h.HostAliases[req.Hostname]; ok {
 		req.Hostname = alias
@@ -59,7 +70,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if req.QRHost && req.Slug != "404" {
-		h.record(ctx, "qrCreate", func(c context.Context) error { return h.Store.RecordQRCreate(c, req.Hostname, req.Slug) })
+		h.counters().add(CounterDoc{Host: req.Hostname, Slug: req.Slug}, counterQRCreate)
 		png, err := QRPNG("https://" + req.Hostname + "/qr" + req.URL)
 		if err != nil {
 			h.logger().Error("qr render", "host", req.Hostname, "slug", req.Slug, "err", err)
@@ -73,7 +84,11 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.record(ctx, "click", func(c context.Context) error { return h.Store.RecordClick(c, req.Hostname, req.Slug, req.ViaQR) })
+	if req.ViaQR {
+		h.counters().add(CounterDoc{Host: req.Hostname, Slug: req.Slug}, counterClick, counterQRUse)
+	} else {
+		h.counters().add(CounterDoc{Host: req.Hostname, Slug: req.Slug}, counterClick)
+	}
 
 	switch {
 	case link.Passthrough:
@@ -87,7 +102,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		destination := link.Destination
 		if dest, rule, ok := ResolvePath(h.logger(), rules, req.Remainder); ok {
-			h.record(ctx, "pathMatch", func(c context.Context) error { return h.Store.RecordPathMatch(c, req.Hostname, req.Slug, rule.ID) })
+			h.counters().add(CounterDoc{Host: req.Hostname, Slug: req.Slug, Rule: rule.ID}, counterMatch)
 			destination = dest
 		}
 		h.redirect(w, req, link, destination)
@@ -155,18 +170,26 @@ func location(w http.ResponseWriter, status int, destination string) {
 	_, _ = w.Write([]byte(http.StatusText(status) + ". Redirecting to " + destination + "\n"))
 }
 
-// record runs one analytics write with CounterTimeout, logging failure. The
-// write is synchronous so it completes while the request still has CPU.
-func (h *Handler) record(ctx context.Context, what string, fn func(context.Context) error) {
-	timeout := h.CounterTimeout
-	if timeout == 0 {
-		timeout = 500 * time.Millisecond
-	}
-	c, cancel := context.WithTimeout(context.WithoutCancel(ctx), timeout)
-	defer cancel()
-	if err := fn(c); err != nil {
-		h.logger().Warn("analytics write failed", "counter", what, "err", err)
-	}
+// FlushCounters writes every pending analytics count. Call it at shutdown
+// after the HTTP server has stopped, so counts batched since the last flush
+// are not lost when the instance exits.
+func (h *Handler) FlushCounters(ctx context.Context) {
+	h.counters().flush(ctx)
+}
+
+// counters returns the handler's analytics batcher, building it from the
+// handler's settings on first use.
+func (h *Handler) counters() *counters {
+	h.countersOnce.Do(func() {
+		h.ctr = &counters{
+			store:    h.Store,
+			logger:   h.logger(),
+			interval: cmp.Or(h.CounterInterval, defaultCounterInterval),
+			timeout:  cmp.Or(h.CounterTimeout, defaultCounterTimeout),
+			now:      time.Now,
+		}
+	})
+	return h.ctr
 }
 
 func (h *Handler) logger() *slog.Logger {

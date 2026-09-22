@@ -7,17 +7,21 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 )
 
-// fakeStore is an in-memory Store that records analytics calls.
+// fakeStore is an in-memory Store that sums analytics counts.
 type fakeStore struct {
 	links  map[string]Link       // key host + "/" + slug
 	rules  map[string][]PathRule // same key
 	err    error
-	clicks []string // "host/slug" or "host/slug qr"
-	qrs    []string
-	paths  []string // "host/slug/ruleID"
+	addErr func(CounterDoc) error // optional AddCounts failure
+
+	mu     sync.Mutex
+	adds   int                         // AddCounts calls, failed ones included
+	counts map[string]map[string]Delta // CounterDoc.String() -> name -> total
 }
 
 func key(host, slug string) string { return host + "/" + slug }
@@ -35,21 +39,44 @@ func (f *fakeStore) GetLink(_ context.Context, host, slug string) (Link, error) 
 func (f *fakeStore) ListPathRules(_ context.Context, host, slug string) ([]PathRule, error) {
 	return f.rules[key(host, slug)], nil
 }
-func (f *fakeStore) RecordClick(_ context.Context, host, slug string, viaQR bool) error {
-	k := key(host, slug)
-	if viaQR {
-		k += " qr"
+func (f *fakeStore) AddCounts(_ context.Context, doc CounterDoc, deltas map[string]Delta) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.adds++
+	if f.addErr != nil {
+		if err := f.addErr(doc); err != nil {
+			return err
+		}
 	}
-	f.clicks = append(f.clicks, k)
+	if f.counts == nil {
+		f.counts = map[string]map[string]Delta{}
+	}
+	stored := f.counts[doc.String()]
+	if stored == nil {
+		stored = map[string]Delta{}
+		f.counts[doc.String()] = stored
+	}
+	for name, d := range deltas {
+		cur := stored[name]
+		cur.N += d.N
+		cur.Last = d.Last
+		stored[name] = cur
+	}
 	return nil
 }
-func (f *fakeStore) RecordQRCreate(_ context.Context, host, slug string) error {
-	f.qrs = append(f.qrs, key(host, slug))
-	return nil
+
+// count returns the stored total for one counter on one document.
+func (f *fakeStore) count(doc, name string) int64 {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.counts[doc][name].N
 }
-func (f *fakeStore) RecordPathMatch(_ context.Context, host, slug, ruleID string) error {
-	f.paths = append(f.paths, key(host, slug)+"/"+ruleID)
-	return nil
+
+// last returns the stored Last time for one counter on one document.
+func (f *fakeStore) last(doc, name string) time.Time {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.counts[doc][name].Last
 }
 
 func newHandler(links map[string]Link) (*Handler, *fakeStore) {
@@ -65,6 +92,9 @@ func do(h *Handler, method, host, uri string, hdr map[string]string) *httptest.R
 	}
 	w := httptest.NewRecorder()
 	h.ServeHTTP(w, r)
+	// Tests assert on stored counts right after the request, so write out
+	// whatever the interval left pending.
+	h.FlushCounters(context.Background())
 	return w
 }
 
@@ -74,8 +104,8 @@ func TestRedirectDefaults(t *testing.T) {
 	if w.Code != 307 || w.Header().Get("Location") != "https://example.org/x" {
 		t.Errorf("got %d %q", w.Code, w.Header().Get("Location"))
 	}
-	if len(fs.clicks) != 1 || fs.clicks[0] != "example.com/demo" {
-		t.Errorf("clicks = %v", fs.clicks)
+	if got := fs.count("example.com/demo", "click"); got != 1 {
+		t.Errorf("click count = %d, want 1", got)
 	}
 }
 
@@ -115,8 +145,8 @@ func TestNotFoundFlow(t *testing.T) {
 			t.Errorf("%s: got %d %q, want 302 %q", uri, w.Code, w.Header().Get("Location"), want)
 		}
 	}
-	if len(fs.clicks) != 0 {
-		t.Errorf("not-found requests must not count clicks: %v", fs.clicks)
+	if len(fs.counts) != 0 {
+		t.Errorf("not-found requests must not count: %v", fs.counts)
 	}
 }
 
@@ -163,8 +193,8 @@ func TestQRHost(t *testing.T) {
 	if got := decodeQR(t, w.Body.Bytes()); got != "https://example.com/qr/demo?x=1" {
 		t.Errorf("QR code for a /qr/ path encodes %q", got)
 	}
-	if len(fs.qrs) != 2 || len(fs.clicks) != 0 {
-		t.Errorf("qr creation should count qrCreate only: qrs=%v clicks=%v", fs.qrs, fs.clicks)
+	if fs.count("example.com/demo", "qrCreate") != 2 || fs.count("example.com/demo", "click") != 0 {
+		t.Errorf("qr creation should count qrCreate only: %v", fs.counts)
 	}
 	// Missing slug on the qr host follows the normal 404 flow.
 	w = do(h, "GET", "qr.example.com", "/nope", nil)
@@ -179,8 +209,8 @@ func TestQRPathCountsScan(t *testing.T) {
 	if w.Code != 307 || w.Header().Get("Location") != "https://example.org/" {
 		t.Errorf("got %d %q", w.Code, w.Header().Get("Location"))
 	}
-	if len(fs.clicks) != 1 || fs.clicks[0] != "example.com/demo qr" {
-		t.Errorf("clicks = %v", fs.clicks)
+	if fs.count("example.com/demo", "click") != 1 || fs.count("example.com/demo", "qrUse") != 1 {
+		t.Errorf("a /qr/ visit counts click and qrUse: %v", fs.counts)
 	}
 }
 
@@ -193,8 +223,8 @@ func TestUsePaths(t *testing.T) {
 	if w.Header().Get("Location") != "https://docs.example.org/g/intro.html" {
 		t.Errorf("match: got %q", w.Header().Get("Location"))
 	}
-	if len(fs.paths) != 1 || fs.paths[0] != "example.com/docs/r1" {
-		t.Errorf("paths = %v", fs.paths)
+	if got := fs.count("example.com/docs/paths/r1", "match"); got != 1 {
+		t.Errorf("match count = %d, want 1", got)
 	}
 	w = do(h, "GET", "example.com", "/docs/other", nil)
 	if w.Header().Get("Location") != "https://docs.example.org/" {
@@ -313,8 +343,8 @@ func TestHostAlias(t *testing.T) {
 	if w.Code != 307 || w.Header().Get("Location") != "https://example.org/" {
 		t.Errorf("aliased host: got %d %q", w.Code, w.Header().Get("Location"))
 	}
-	if len(fs.clicks) != 1 || fs.clicks[0] != "example.com/demo" {
-		t.Errorf("click should land on the aliased collection: %v", fs.clicks)
+	if got := fs.count("example.com/demo", "click"); got != 1 {
+		t.Errorf("click should land on the aliased collection: %v", fs.counts)
 	}
 	// The QR host form of an aliased host also resolves.
 	w = do(h, "GET", "qr.www.example.com", "/demo", nil)

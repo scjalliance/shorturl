@@ -73,8 +73,16 @@ error handling:
 - Always: `clickCount` +1, `clickLast` = server time.
 - QR scan: also `qrUseCount` +1, `qrUseLast` = server time.
 
-**port:** the same fields are written synchronously with a 500 ms timeout;
-failure is logged and the redirect still happens.
+**port:** the same fields are written, but batched. Each instance sums
+counts in memory and writes one increment per document, with a 1 second
+timeout, from the first request that arrives at least 5 seconds after its
+previous flush. An idle instance holds its counts until its next request
+or its shutdown, when everything pending is written. The `*Last` fields
+hold the time of the latest visit, taken from the instance clock, not the
+write time. A write that Firestore rejected unapplied (contention,
+quota) is retried on the next flush; any other failure, including a
+timeout, is logged and dropped, because a timed-out write may have
+committed and retrying it would double count.
 
 ## Modes
 

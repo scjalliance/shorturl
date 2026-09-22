@@ -32,7 +32,8 @@ func main() {
 	}
 }
 
-// run wires the Firestore client and HTTP server and blocks until SIGTERM.
+// run wires the Firestore client and HTTP server, blocks until SIGTERM, then
+// drains requests and flushes batched analytics counts.
 func run(logger *slog.Logger) error {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
@@ -82,10 +83,16 @@ func run(logger *slog.Logger) error {
 		return err
 	case <-ctx.Done():
 	}
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	// Cloud Run allows 10s after SIGTERM: most of it drains requests, and the
+	// rest writes the analytics counts batched since the last flush.
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 7*time.Second)
 	defer cancel()
-	if err := srv.Shutdown(shutdownCtx); err != nil && !errors.Is(err, http.ErrServerClosed) {
-		return err
+	shutdownErr := srv.Shutdown(shutdownCtx)
+	flushCtx, cancelFlush := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancelFlush()
+	h.FlushCounters(flushCtx)
+	if shutdownErr != nil && !errors.Is(shutdownErr, http.ErrServerClosed) {
+		return shutdownErr
 	}
 	return nil
 }
