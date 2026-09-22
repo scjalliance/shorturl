@@ -83,7 +83,8 @@ type Store interface {
     GetLink(ctx, host, slug string) (Link, error)        // ErrNotFound when absent
     ListPathRules(ctx, host, slug string) ([]PathRule, error)
     // adds Delta.N to "<name>Count", sets "<name>Last" to Delta.Last;
-    // ErrNotFound when absent, ErrCounterRetry when not applied
+    // ErrCounterRetry when the write was not applied, a plain error
+    // otherwise, including a missing document
     AddCounts(ctx, doc CounterDoc, deltas map[string]Delta) error
 }
 ```

@@ -158,7 +158,7 @@ func TestCountersConcurrentRequests(t *testing.T) {
 	var wg sync.WaitGroup
 	for range n {
 		wg.Go(func() {
-			r := httptest.NewRequest("GET", "http://example.com/demo", nil)
+			r := httptest.NewRequestWithContext(t.Context(), "GET", "http://example.com/demo", nil)
 			h.ServeHTTP(httptest.NewRecorder(), r)
 		})
 	}
