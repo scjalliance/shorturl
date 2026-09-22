@@ -287,8 +287,15 @@ gcloud run revisions list --service shorturl --region us-central1
 gcloud run services update-traffic shorturl --region us-central1 --to-revisions <revision>=100
 ```
 
-Then revert the commit on `main`. The next deploy sends all traffic to the
-new revision again. No data changes are involved in either direction.
+This pins traffic to that revision. Later deploys create new revisions but
+send them no traffic until the pin is lifted, so after the fix is on `main`
+and deployed, return traffic to the latest revision:
+
+```bash
+gcloud run services update-traffic shorturl --region us-central1 --to-latest
+```
+
+No data changes are involved in either direction.
 
 ## Risks
 

@@ -109,8 +109,9 @@ Reverse proxy to `destination`.
   `X-Passthrough-Slug`, `X-ShortUrl-Ver` (build version).
 - Method is forwarded. Body is forwarded for every method except GET and
   HEAD. The upstream call times out after 30 seconds.
-- Upstream redirects are followed, up to 10. A 301, 302, or 303 is
-  followed as a GET without the body. A 307 or 308 on a request with a body
+- Upstream redirects are followed, up to 10. GET and HEAD keep their
+  method. Other methods follow a 301, 302, or 303 as a GET without the
+  body. A 307 or 308 on a request with a body
   is not followed, because the body cannot be re-sent; the 3xx is treated
   like any other non-2xx status.
 - Response: `X-ShortUrl-Ver` is always set. If the upstream status is not
