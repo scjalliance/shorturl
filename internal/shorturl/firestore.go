@@ -73,8 +73,6 @@ func (s *FirestoreStore) AddCounts(ctx context.Context, doc CounterDoc, deltas m
 	switch status.Code(err) {
 	case codes.OK:
 		return nil
-	case codes.NotFound:
-		return fmt.Errorf("adding counts to %s: %w: %w", doc, ErrNotFound, err)
 	case codes.Aborted, codes.ResourceExhausted:
 		// Firestore rejected the write before applying it: contention or
 		// quota. Any other failure, a timeout above all, may have committed.

@@ -124,6 +124,12 @@ dropped, since a timeout may have committed. Pending counts are flushed
 on SIGTERM after the server drains. An idle instance holds counts until
 its next request or its shutdown.
 
+Known limits: the interval is per instance, so at the 10 instance maximum
+a hot document can see about 2 writes a second. `*Last` is a plain
+write, so an instance flushing an older visit after another instance's
+newer one moves it backwards; Firestore's `maximum` transform only applies
+to numbers, and a read-then-write would bring back the contention.
+
 Revised 2026-09-22. The first version wrote once per request,
 synchronously, with a 500 ms timeout. In production the busiest
 passthrough link took up to about 4,000 requests an hour, and on

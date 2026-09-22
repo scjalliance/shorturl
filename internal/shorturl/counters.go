@@ -47,6 +47,8 @@ const (
 const (
 	defaultCounterInterval = 5 * time.Second
 	defaultCounterTimeout  = time.Second
+	// maxCounterWrites bounds the concurrent writes in one flush.
+	maxCounterWrites = 8
 )
 
 // counters batches analytics increments in memory so a busy link costs one
@@ -164,15 +166,18 @@ func (c *counters) flush(ctx context.Context) {
 	c.write(ctx, c.take(false), false)
 }
 
-// write sends one AddCounts per document in parallel, each bounded by the
-// write timeout. When requeue is set, failures the store marks with
+// write sends one AddCounts per document, up to maxCounterWrites at a time,
+// each bounded by the write timeout. When requeue is set, failures the store marks with
 // ErrCounterRetry are merged back for the next flush. Any other failure is
 // dropped, because a write that timed out may still have been applied and
 // writing it again would double count.
 func (c *counters) write(ctx context.Context, batch map[CounterDoc]map[string]Delta, requeue bool) {
 	var wg sync.WaitGroup
+	slots := make(chan struct{}, maxCounterWrites)
 	for doc, deltas := range batch {
+		slots <- struct{}{}
 		wg.Go(func() {
+			defer func() { <-slots }()
 			wctx, cancel := context.WithTimeout(ctx, c.timeout)
 			defer cancel()
 			err := c.store.AddCounts(wctx, doc, deltas)

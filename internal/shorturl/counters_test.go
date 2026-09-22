@@ -2,6 +2,7 @@ package shorturl
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http/httptest"
 	"sync"
@@ -82,7 +83,7 @@ func TestCountersRequeueUnappliedWrite(t *testing.T) {
 func TestCountersDropAmbiguousFailure(t *testing.T) {
 	for name, err := range map[string]error{
 		"timeout": context.DeadlineExceeded,
-		"deleted": fmt.Errorf("adding counts: %w", ErrNotFound),
+		"deleted": errors.New("rpc error: code = NotFound"),
 	} {
 		t.Run(name, func(t *testing.T) {
 			c, fs, now := newCounters()

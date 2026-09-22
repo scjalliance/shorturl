@@ -79,7 +79,9 @@ timeout, from the first request that arrives at least 5 seconds after its
 previous flush. An idle instance holds its counts until its next request
 or its shutdown, when everything pending is written. The `*Last` fields
 hold the time of the latest visit, taken from the instance clock, not the
-write time. A write that Firestore rejected unapplied (contention,
+write time. Because instances flush independently, an idle instance
+writing an old visit at shutdown can set a `*Last` field earlier than a
+visit another instance already recorded. A write that Firestore rejected unapplied (contention,
 quota) is retried on the next flush; any other failure, including a
 timeout, is logged and dropped, because a timed-out write may have
 committed and retrying it would double count.

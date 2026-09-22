@@ -43,8 +43,7 @@ type Store interface {
 	ListPathRules(ctx context.Context, host, slug string) ([]PathRule, error)
 	// AddCounts adds each delta's N to the "<name>Count" field of doc and
 	// sets "<name>Last" to the delta's Last time. The returned error wraps
-	// ErrNotFound when the document no longer exists, and ErrCounterRetry
-	// when the database reports the write was not applied.
+	// ErrCounterRetry when the database reports the write was not applied.
 	AddCounts(ctx context.Context, doc CounterDoc, deltas map[string]Delta) error
 }
 

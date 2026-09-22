@@ -57,8 +57,8 @@ func TestFirestoreStore(t *testing.T) {
 	if err := s.AddCounts(ctx, CounterDoc{Host: "example.com", Slug: "demo", Rule: "r1"}, map[string]Delta{"match": {4, t2}}); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.AddCounts(ctx, CounterDoc{Host: "example.com", Slug: "missing"}, map[string]Delta{"click": {1, t2}}); !errors.Is(err, ErrNotFound) {
-		t.Errorf("counts on a missing doc: got %v, want ErrNotFound", err)
+	if err := s.AddCounts(ctx, CounterDoc{Host: "example.com", Slug: "missing"}, map[string]Delta{"click": {1, t2}}); err == nil || errors.Is(err, ErrCounterRetry) {
+		t.Errorf("counts on a missing doc: got %v, want a non-retryable error", err)
 	}
 	snap, err := doc.Get(ctx)
 	if err != nil {
