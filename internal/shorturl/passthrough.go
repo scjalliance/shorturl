@@ -63,7 +63,9 @@ func (h *Handler) passthrough(ctx context.Context, w http.ResponseWriter, r *htt
 	// to follow a 307 or 308 and to retry after an HTTP/2 GOAWAY.
 	var body io.Reader
 	if r.Method != http.MethodGet && r.Method != http.MethodHead {
-		weight := int64(maxPassthroughBody)
+		// An unknown length reserves twice the cap: io.ReadAll holds its
+		// chunks and the final slice at the same time.
+		weight := int64(2 * maxPassthroughBody)
 		if r.ContentLength > maxPassthroughBody {
 			h.logger().Warn("passthrough body too large", "destination", destination, "length", r.ContentLength)
 			http.Error(w, "Request Entity Too Large", http.StatusRequestEntityTooLarge)
@@ -78,7 +80,7 @@ func (h *Handler) passthrough(ctx context.Context, w http.ResponseWriter, r *htt
 			return
 		}
 		b, err := readPassthroughBody(w, r)
-		// A chunked body reserved the full cap; return what it did not use.
+		// Once read, only the body itself is held; return the rest.
 		if n := int64(len(b)); err == nil && n < weight {
 			passthroughBodyBudget.Release(weight - n)
 			weight = n
