@@ -108,12 +108,15 @@ Reverse proxy to `destination`.
 - Added request headers: `X-Passthrough-Domain` (collection host),
   `X-Passthrough-Slug`, `X-ShortUrl-Ver` (build version).
 - Method is forwarded. Body is forwarded for every method except GET and
-  HEAD. The upstream call times out after 30 seconds.
+  HEAD. It is read into memory first, up to 10 MiB; a larger body responds
+  `413 Request Entity Too Large` without calling the upstream, and a body
+  read error responds `400 Bad Request`. Bodies buffered at once on one
+  instance are capped at 64 MiB in total; a body that does not fit responds
+  `503 Service Unavailable` with `Retry-After: 1`. The upstream call times
+  out after 30 seconds.
 - Upstream redirects are followed, up to 10. GET and HEAD keep their
   method. Other methods follow a 301, 302, or 303 as a GET without the
-  body. A 307 or 308 on a request with a body
-  is not followed, because the body cannot be re-sent; the 3xx is treated
-  like any other non-2xx status.
+  body, and a 307 or 308 with the same method and body.
 - Response: `X-ShortUrl-Ver` is always set. If the upstream status is not
   2xx and `passthroughAnyStatus` is falsy, respond
   `500 Internal Server Error`. Otherwise copy only

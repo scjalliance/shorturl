@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -355,5 +356,80 @@ func TestHostAlias(t *testing.T) {
 	w = do(h, "GET", "other.example.com", "/demo", nil)
 	if w.Code != 302 || w.Header().Get("Location") != "/404/demo" {
 		t.Errorf("unaliased host: got %d %q", w.Code, w.Header().Get("Location"))
+	}
+}
+
+// TestPassthroughBodyReplay checks that a buffered body survives a 307 and
+// a 308 from the upstream. Both need GetBody, which the HTTP/2 GOAWAY retry
+// also uses.
+func TestPassthroughBodyReplay(t *testing.T) {
+	var seenBody, seenMethod string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/307":
+			http.Redirect(w, r, "/308", http.StatusTemporaryRedirect)
+		case "/308":
+			http.Redirect(w, r, "/final", http.StatusPermanentRedirect)
+		default:
+			b, _ := io.ReadAll(r.Body)
+			seenBody, seenMethod = string(b), r.Method
+			w.WriteHeader(200)
+		}
+	}))
+	defer upstream.Close()
+	h, _ := newHandler(map[string]Link{"example.com/p": {Destination: upstream.URL + "/307", Passthrough: true}})
+	r := httptest.NewRequest("PUT", "http://placeholder/p", strings.NewReader("payload"))
+	r.Host = "example.com"
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+	if w.Code != 200 {
+		t.Fatalf("got %d", w.Code)
+	}
+	upstream.Close() // waits for the handler, so its writes are visible
+	if seenMethod != "PUT" || seenBody != "payload" {
+		t.Errorf("after redirects upstream saw %s %q, want PUT %q", seenMethod, seenBody, "payload")
+	}
+}
+
+func TestPassthroughBodyLimits(t *testing.T) {
+	var calls atomic.Int32
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+	}))
+	defer upstream.Close()
+	h, _ := newHandler(map[string]Link{"example.com/p": {Destination: upstream.URL, Passthrough: true}})
+	post := func(length int64) *httptest.ResponseRecorder {
+		r := httptest.NewRequest("POST", "http://placeholder/p", strings.NewReader(strings.Repeat("x", maxPassthroughBody+1)))
+		r.Host = "example.com"
+		r.ContentLength = length
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, r)
+		return w
+	}
+
+	// Declared too large, and too large with no declared length (chunked).
+	for _, length := range []int64{maxPassthroughBody + 1, -1} {
+		w := post(length)
+		if w.Code != http.StatusRequestEntityTooLarge {
+			t.Errorf("length %d: got %d, want 413", length, w.Code)
+		}
+		if w.Header().Get("X-ShortUrl-Ver") != "test" {
+			t.Errorf("length %d: missing X-ShortUrl-Ver", length)
+		}
+	}
+
+	// The instance-wide budget is exhausted.
+	if !passthroughBodyBudget.TryAcquire(64 << 20) {
+		t.Fatal("budget already held")
+	}
+	w := post(-1)
+	passthroughBodyBudget.Release(64 << 20)
+	if w.Code != http.StatusServiceUnavailable || w.Header().Get("Retry-After") == "" {
+		t.Errorf("exhausted budget: got %d, Retry-After %q", w.Code, w.Header().Get("Retry-After"))
+	}
+
+	upstream.Close()
+	if n := calls.Load(); n != 0 {
+		t.Errorf("upstream called %d times for rejected bodies", n)
 	}
 }
