@@ -110,8 +110,10 @@ Reverse proxy to `destination`.
 - Method is forwarded. Body is forwarded for every method except GET and
   HEAD. It is read into memory first, up to 10 MiB; a larger body responds
   `413 Request Entity Too Large` without calling the upstream, and a body
-  read error responds `400 Bad Request`. The upstream call times out after
-  30 seconds.
+  read error responds `400 Bad Request`. Bodies buffered at once on one
+  instance are capped at 64 MiB in total; a body that does not fit responds
+  `503 Service Unavailable` with `Retry-After: 1`. The upstream call times
+  out after 30 seconds.
 - Upstream redirects are followed, up to 10. GET and HEAD keep their
   method. Other methods follow a 301, 302, or 303 as a GET without the
   body, and a 307 or 308 with the same method and body.

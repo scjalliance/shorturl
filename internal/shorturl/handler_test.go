@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -384,26 +385,51 @@ func TestPassthroughBodyReplay(t *testing.T) {
 	if w.Code != 200 {
 		t.Fatalf("got %d", w.Code)
 	}
+	upstream.Close() // waits for the handler, so its writes are visible
 	if seenMethod != "PUT" || seenBody != "payload" {
 		t.Errorf("after redirects upstream saw %s %q, want PUT %q", seenMethod, seenBody, "payload")
 	}
 }
 
-func TestPassthroughBodyTooLarge(t *testing.T) {
-	called := false
+func TestPassthroughBodyLimits(t *testing.T) {
+	var calls atomic.Int32
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		called = true
+		calls.Add(1)
 	}))
 	defer upstream.Close()
 	h, _ := newHandler(map[string]Link{"example.com/p": {Destination: upstream.URL, Passthrough: true}})
-	r := httptest.NewRequest("POST", "http://placeholder/p", strings.NewReader(strings.Repeat("x", maxPassthroughBody+1)))
-	r.Host = "example.com"
-	w := httptest.NewRecorder()
-	h.ServeHTTP(w, r)
-	if w.Code != http.StatusRequestEntityTooLarge {
-		t.Errorf("got %d, want 413", w.Code)
+	post := func(length int64) *httptest.ResponseRecorder {
+		r := httptest.NewRequest("POST", "http://placeholder/p", strings.NewReader(strings.Repeat("x", maxPassthroughBody+1)))
+		r.Host = "example.com"
+		r.ContentLength = length
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, r)
+		return w
 	}
-	if called {
-		t.Errorf("upstream was called for an oversized body")
+
+	// Declared too large, and too large with no declared length (chunked).
+	for _, length := range []int64{maxPassthroughBody + 1, -1} {
+		w := post(length)
+		if w.Code != http.StatusRequestEntityTooLarge {
+			t.Errorf("length %d: got %d, want 413", length, w.Code)
+		}
+		if w.Header().Get("X-ShortUrl-Ver") != "test" {
+			t.Errorf("length %d: missing X-ShortUrl-Ver", length)
+		}
+	}
+
+	// The instance-wide budget is exhausted.
+	if !passthroughBodyBudget.TryAcquire(64 << 20) {
+		t.Fatal("budget already held")
+	}
+	w := post(-1)
+	passthroughBodyBudget.Release(64 << 20)
+	if w.Code != http.StatusServiceUnavailable || w.Header().Get("Retry-After") == "" {
+		t.Errorf("exhausted budget: got %d, Retry-After %q", w.Code, w.Header().Get("Retry-After"))
+	}
+
+	upstream.Close()
+	if n := calls.Load(); n != 0 {
+		t.Errorf("upstream called %d times for rejected bodies", n)
 	}
 }
