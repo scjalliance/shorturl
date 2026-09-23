@@ -357,3 +357,53 @@ func TestHostAlias(t *testing.T) {
 		t.Errorf("unaliased host: got %d %q", w.Code, w.Header().Get("Location"))
 	}
 }
+
+// TestPassthroughBodyReplay checks that a buffered body survives a 307 and
+// a 308 from the upstream. Both need GetBody, which the HTTP/2 GOAWAY retry
+// also uses.
+func TestPassthroughBodyReplay(t *testing.T) {
+	var seenBody, seenMethod string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/307":
+			http.Redirect(w, r, "/308", http.StatusTemporaryRedirect)
+		case "/308":
+			http.Redirect(w, r, "/final", http.StatusPermanentRedirect)
+		default:
+			b, _ := io.ReadAll(r.Body)
+			seenBody, seenMethod = string(b), r.Method
+			w.WriteHeader(200)
+		}
+	}))
+	defer upstream.Close()
+	h, _ := newHandler(map[string]Link{"example.com/p": {Destination: upstream.URL + "/307", Passthrough: true}})
+	r := httptest.NewRequest("PUT", "http://placeholder/p", strings.NewReader("payload"))
+	r.Host = "example.com"
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+	if w.Code != 200 {
+		t.Fatalf("got %d", w.Code)
+	}
+	if seenMethod != "PUT" || seenBody != "payload" {
+		t.Errorf("after redirects upstream saw %s %q, want PUT %q", seenMethod, seenBody, "payload")
+	}
+}
+
+func TestPassthroughBodyTooLarge(t *testing.T) {
+	called := false
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		called = true
+	}))
+	defer upstream.Close()
+	h, _ := newHandler(map[string]Link{"example.com/p": {Destination: upstream.URL, Passthrough: true}})
+	r := httptest.NewRequest("POST", "http://placeholder/p", strings.NewReader(strings.Repeat("x", maxPassthroughBody+1)))
+	r.Host = "example.com"
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+	if w.Code != http.StatusRequestEntityTooLarge {
+		t.Errorf("got %d, want 413", w.Code)
+	}
+	if called {
+		t.Errorf("upstream was called for an oversized body")
+	}
+}

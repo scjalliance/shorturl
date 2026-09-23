@@ -1,12 +1,18 @@
 package shorturl
 
 import (
+	"bytes"
 	"context"
+	"errors"
 	"io"
 	"net"
 	"net/http"
 	"strings"
 )
+
+// maxPassthroughBody caps the buffered request body. It matches the 10 MB
+// request limit of the Cloud Function this service replaced.
+const maxPassthroughBody = 10 << 20
 
 // passthroughRequestHeaders are copied from the visitor's request to the
 // upstream request when present. The X-Goog-* headers let Google push
@@ -44,18 +50,27 @@ var passthroughResponseHeaders = []string{
 // response back. Non-2xx upstream responses become a 500 unless the link
 // sets passthroughAnyStatus.
 func (h *Handler) passthrough(ctx context.Context, w http.ResponseWriter, r *http.Request, req Request, link Link, destination string) {
+	// The body is buffered so the request has a GetBody. The client needs it
+	// to follow a 307 or 308 and to retry after an HTTP/2 GOAWAY.
 	var body io.Reader
 	if r.Method != http.MethodGet && r.Method != http.MethodHead {
-		body = r.Body
+		b, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxPassthroughBody))
+		if err != nil {
+			h.logger().Warn("passthrough read body", "destination", destination, "err", err)
+			if _, ok := errors.AsType[*http.MaxBytesError](err); ok {
+				http.Error(w, "Request Entity Too Large", http.StatusRequestEntityTooLarge)
+				return
+			}
+			http.Error(w, "Bad Request", http.StatusBadRequest)
+			return
+		}
+		body = bytes.NewReader(b)
 	}
 	up, err := http.NewRequestWithContext(ctx, r.Method, destination, body)
 	if err != nil {
 		h.logger().Warn("passthrough request", "destination", destination, "err", err)
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return
-	}
-	if body != nil && r.ContentLength > 0 {
-		up.ContentLength = r.ContentLength
 	}
 	up.Header.Set("Accept", "*/*")
 	if v := r.Header.Get("Accept"); v != "" {

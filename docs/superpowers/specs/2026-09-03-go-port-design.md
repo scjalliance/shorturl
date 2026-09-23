@@ -196,7 +196,6 @@ request access log; Cloud Run produces one.
 | `statusCode` | any truthy value | a number from 200 to 599, else 307 |
 | Host aliases | none | `SHORTURL_HOST_ALIASES` maps a host to another collection |
 | Passthrough upstream timeout | function timeout | 30 s |
-| Passthrough 307/308 on a request with a body | followed, body re-sent | not followed; treated as non-2xx |
 | Frame iframe `src` | `encodeURI(destination)` | `html/template` URL normalization; unsafe schemes become `#ZgotmplZ` |
 
 Everything else, including counter field names, header allowlists, status
